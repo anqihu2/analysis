@@ -1,0 +1,73 @@
+---
+title: "internal_consistency"
+author: "Jojo Hu"
+date: "4/3/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+acc<- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/acc_trial.csv")
+
+# tdAcc <- acc[which(acc$group == "TD"),]
+# tdAcc <- acc[which(acc$group == "ASD"),]
+
+tdAcc <- tdAcc[,c("subj", "corr", "task", "trial_order")]
+
+tdAcc <- tdAcc[with(tdAcc, order(subj, task, trial_order)),]
+
+
+
+library(reshape2)
+
+tdAccWd <- dcast(subj +trial_order~ task, data = tdAcc, value.var = "corr")
+
+lsl <- tdAccWd[,c(1,2,3)]
+
+ssl <- tdAccWd[, c(1, 2, 4)]
+
+tsl <- tdAccWd[, c(1, 2, 5)]
+
+vsl <- tdAccWd[, c(1, 2, 6)]
+
+
+
+sslAcc <- dcast(trial_order~subj, data = ssl, value.var = "ssl")
+sslAcc <- sslAcc[,-1]
+
+
+lslAcc <- dcast(trial_order~subj, data = lsl, value.var = "lsl")
+lslAcc <- lslAcc[,-1]
+
+tslAcc <- dcast(trial_order~subj, data = tsl, value.var = "tsl")
+tslAcc <- tslAcc[,-1]
+
+
+vslAcc <- dcast(trial_order~subj, data = vsl, value.var = "vsl")
+vslAcc <- vslAcc[,-1]
+
+noNAcol <-
+function(df) {
+df <- Filter(function(x)!all(is.na(x)), df)
+return(df)
+}
+
+vslAcc <- noNAcol(vslAcc)
+lslAcc <- noNAcol(lslAcc)
+tslAcc <- noNAcol(tslAcc)
+sslAcc <- noNAcol(sslAcc)
+
+
+library(psych)
+
+alpha(lslAcc)
+alpha(sslAcc)
+alpha(tslAcc)
+alpha(vslAcc)
+```
+
