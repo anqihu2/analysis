@@ -12,7 +12,7 @@ output: html_document
 # The descriptive stats on the poster are based on the corr subjects.csv (26 subjects)
 # The bar graph are based on 29 auditory subjects (auditory_sl_subject.csv), and 27 visual subjects (auditory_sl_subject.csv)
 #Set up current working directory
-setwd ("/Users/jojohu/Documents/in_scanner_beh_analysis/in_scanner_analysis_08_10_19")
+setwd ("in_scanner_beh_analysis/in_scanner_analysis_08_10_19")
 
 # Read in in-scanner behavioral data
 visual_data <- read.csv("adult_in_scanner_visual_behavioral_all_runs_08_08_19.csv")

@@ -12,10 +12,10 @@ knitr::opts_chunk$set(echo = TRUE)
 ## 1st QP 2019 Behavioral Analysis
 
 ``` {r}
-setwd("/Users/jojohu/Documents/Qlab/bucld_2019_followup")
+setwd("bucld_2019_followup")
 
 drive_checklist <-
-  read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/drive_checklist.csv")
+  read.csv("bucld_2019_followup/drive_checklist.csv")
 
 #Reformat date columns
 drive_checklist$date_of_mri <-
@@ -73,16 +73,16 @@ drive_checklist$age_at_neuro_year <- round(drive_checklist$age_at_neuro_month /1
 #Clean Data
 ```{r,echo=FALSE}
 #Read in demographic data
-bucld_demo_all <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/bucld_demo_all_manually_editted.csv")
+bucld_demo_all <- read.csv("bucld_2019_followup/bucld_demo_all_manually_editted.csv")
 #Read in GJT data 
-gjt <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/gjt_score.csv")
+gjt <- read.csv("bucld_2019_followup/gjt_score.csv")
 #Read in analyzed behavioral data
 bucld_blast_data_list <- 
-  list.files(path = "/Users/jojohu/Documents/Qlab/bucld_2019_followup/",
+  list.files(path = "bucld_2019_followup/",
              pattern = "*blast_all.csv", full.names = T)
 
 bucld_spoli_data_list <-
-  list.files(path = "/Users/jojohu/Documents/Qlab/bucld_2019_followup/",
+  list.files(path = "bucld_2019_followup/",
              pattern = "*spoli_all.csv", full.names = T)
 
 bucld_blast_data <- lapply(bucld_blast_data_list, read.csv)
@@ -201,13 +201,13 @@ blast_spoli_data_wide$entropy_children_lsl_entropy <-
 ineligible_part_spoli <- blast_spoli_data_wide[which(blast_spoli_data_wide$age_at_web_year > 18),] 
 blast_spoli_data_wide <- blast_spoli_data_wide[-which(blast_spoli_data_wide$age_at_web_year > 18),] 
 
-print(ineligible_part_spoli)
+print(ineligible_part_spoli[c("part_id")])
 ```
 **Above are ineligible participants.**
 
 # More Data Prep
 ```{r, include = FALSE}
-bucld_scq_web <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/bucld_demo_all_manually_editted.csv")
+bucld_scq_web <- read.csv("bucld_2019_followup/bucld_demo_all_manually_editted.csv")
 bucld_scq_web <- bucld_scq_web[,c("part_id", "final_score")]
 colnames(bucld_scq_web)[colnames(bucld_scq_web) == "final_score"] <- "scq_web"
 
@@ -219,8 +219,7 @@ bucld_all_completed <-
          blast_spoli_data_wide$accuracy_children_vsl_accuracies != "" |
          blast_spoli_data_wide$accuracy_children_lsl_accuracies != ""),]
 
-#Remove blast_c_011 who has not given consent, cannot analyze. 198 has no demo info and has only one SL task completed
-# bucld_all_completed <- bucld_all_completed[-which(bucld_all_completed$part_id == "blast_c_011"),]
+#Remove 198 who has no demo info and has only one SL task completed
 
 bucld_all_completed <-
   bucld_all_completed[-which(bucld_all_completed$part_id == "blast_c_198"), ]
@@ -411,7 +410,7 @@ print(chisq.test(gender_wide))
 
 bucld_all_completed[,c("part_id", "group")]
 ```
-Gender is NOT matched between group.
+
 
 
 # Gender Match Group, all analysis below changes
@@ -453,7 +452,7 @@ male_pool <- male_pool[-which(male_pool$complete_count < 5),]
 
 male_pool <- male_pool[ , !(names(male_pool) %in% "complete_count")]
 
-# Why not 20? Something wrong.
+
 mdata_removed_masdcount <- nrow(male_pool)
 
 sampled_male <- male_pool[sample(nrow(male_pool), 15), ]
@@ -483,12 +482,6 @@ Number of ALL ASD males: `r masd_allcount`
 Number of ASD males after removing age outliers below 6 years old and above 12 years old: `r age_removed_masdcount`
 
 Number of ASD males after removing missing data (less than 5 measures): `r mdata_removed_masdcount`
-
-2 TD females are removed due to > 12 years old, 13 to 11 females.
-
-**Gender is now matched between group**
-
-**Excluding missing data (SL, scq, gjt, rsr), ASD males have `r nrow(male_pool)` participants with relatively complete data.**
 
 
 # Prep data for graphs, remove outliers
@@ -640,16 +633,7 @@ if(length(lsl_rt_outlier) != 0) {
       "slope_children_lsl_indiv_rts_slope")] <- NA
 }
 
-# To Do: Remove outliers for Spoli.
-# spoli_c_125 outlier for SSL (based on eyeballing)
-  # bucld_sl_bar_all[which(
-  #   bucld_sl_bar_all$part_id %in% "spoli_c_125"),
-  #   c("slope_children_ssl_indiv_rts_slope")] <- NA
-  # 
-  # 
-  # bucld_all_completed[which(
-  #   bucld_all_completed$part_id %in% "spoli_c_125"),
-  #   c("slope_children_ssl_indiv_rts_slope")] <- NA
+
   
 # Spoli_c_097 has invalid key press
 if(length(which(bucld_sl_bar_all$part_id %in% "spoli_c_097")) != 0) {
@@ -1170,9 +1154,9 @@ ggplot(bucld_all_completed_slope, aes(x = group, y = rt_slope, color = group)) +
 # By trial Accuracy GLMER 
 ```{r, include = F}
 input_path3 <- 
-  "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/acc_by_trial"
+  "blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/acc_by_trial"
 
-input_path4 <- "/Users/jojohu/Documents/Qlab/spoli/data_summaries/breakdown/acc_by_trial"
+input_path4 <- "spoli/data_summaries/breakdown/acc_by_trial"
 
 acclist <-
   list.files(path = input_path3,
@@ -1226,7 +1210,7 @@ acc_trial$subj <- as.factor(acc_trial$subj)
 acc_trial$task <- as.factor(acc_trial$task)
 acc_trial$group <- as.factor(acc_trial$group)
 
-write.csv(acc_trial, "/Users/jojohu/Documents/Qlab/bucld_2019_followup/acc_trial.csv")
+write.csv(acc_trial, "bucld_2019_followup/acc_trial.csv")
 
 acc_trial <- acc_trial[which(acc_trial$subj %in% bucld_all_completed$part_id),]
 ```
@@ -1261,10 +1245,10 @@ summary(logacc_item)
 # By trial RT GLMER 
 ```{r, include = F}
 input_path5 <- 
-  "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/rt_by_trial"
+  "blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/rt_by_trial"
 
 input_path6 <- 
-  "/Users/jojohu/Documents/Qlab/spoli/data_summaries/breakdown/rt_by_trial"
+  "spoli/data_summaries/breakdown/rt_by_trial"
 
 rtlist <-
   list.files(path = input_path5,
@@ -1447,6 +1431,8 @@ write.csv(acc_stat_across_sd, "qp_figure/acc_stat.csv")
 
 # SL Accuracy within subject error 
 ```{r, include = F}
+# Script from: http://www.cookbook-r.com/Graphs/Plotting_means_and_error_bars_(ggplot2)/#error-bars-for-within-subjects-variables
+
 summarySEwithin <- function(data=NULL, measurevar, betweenvars=NULL, withinvars=NULL,
                             idvar=NULL, na.rm=FALSE, conf.interval=.95, .drop=TRUE) {
 

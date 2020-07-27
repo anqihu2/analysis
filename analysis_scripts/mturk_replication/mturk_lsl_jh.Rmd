@@ -16,13 +16,13 @@ library(ppcor)
 
 ```{r,echo=FALSE,warning=FALSE}
 #Please refer to mturk_vsl to see the specific comment for each step, since they are similar
-wj3 <- read.csv("/Users/jojohu/Documents/mturk/raw/cleaned_data/wj3_score.csv")
-scf <-  read.csv("/Users/jojohu/Documents/mturk/raw/cleaned_data/scf.csv")
+wj3 <- read.csv("mturk/raw/cleaned_data/wj3_score.csv")
+scf <-  read.csv("mturk/raw/cleaned_data/scf.csv")
 
 language_1 = list(1,1,1,2,2,1,1,2,2,2,1,2,1,1,2,2,1,1,1,1,2,1,2,2,1,2,2,2,1,2,2,1)
 language_2 = list(1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2)
 
-path <- "/Users/jojohu/Documents/mturk/raw/lsl_clean_s1/"
+path <- "mturk/raw/lsl_clean_s1/"
 files <- list.files(path=path, pattern="*.csv") 
 for(file in files)
 {
@@ -133,10 +133,10 @@ subset1 <- subj_table[subj_table$gender!="Other",]
 library(stringr)
 
 lslacc <- list()
-path <- "/Users/jojohu/Documents/mturk/raw/mturk_data_s1/lsl/"
+path <- "mturk/raw/mturk_data_s1/lsl/"
 files <- list.files(path=path, pattern="*.csv") 
 
-lsl_acc1 <- read.csv("/Users/jojohu/Documents/mturk/raw/cleaned_data/lsl_acc1.csv")
+lsl_acc1 <- read.csv("mturk/raw/cleaned_data/lsl_acc1.csv")
 poster_subj <- unique(lsl_acc1$acc_id)
 
 # for(file in files)
@@ -281,7 +281,7 @@ lsl_acc_table <- lsl_acc_table[lsl_acc_table$subj_corr <= ub, ]
 lsl_accuracy$reindex <- rep(1:32, (nrow(lsl_accuracy)/32))
 
 # Written csv by JH
-# write.csv(lsl_accuracy[-5], "/Users/jojohu/Documents/mturk/lslS1AccByTrial.csv")
+# write.csv(lsl_accuracy[-5], "mturk/lslS1AccByTrial.csv")
 
 
 # lsl_accuracy <- lsl_accuracy[which(!lsl_accuracy$subj %in% "mtslAG213"),]
@@ -307,7 +307,7 @@ a1 <- psych::alpha(d1, check.keys = TRUE)$total$std.alpha
 print(d1)
 
 # Written csv by JH
-# write.csv(d1, "/Users/jojohu/Documents/mturk/lsl_s1_cond1_alpha.csv")
+# write.csv(d1, "mturk/lsl_s1_cond1_alpha.csv")
 
 
 lsl_acc2 <- lsl_accuracy[lsl_accuracy$cond == "lang2", ]

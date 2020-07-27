@@ -13,10 +13,10 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ``` {r}
 
-output_path <- ("/Users/jojohu/Documents/Qlab/JoVE/")
+output_path <- ("JoVE/")
 
 drive_checklist <-
-  read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/drive_checklist.csv")
+  read.csv("bucld_2019_followup/drive_checklist.csv")
 
 drive_checklist <- drive_checklist[-which(drive_checklist$Participant.ID == "blast_c_267"| 
                                           drive_checklist$Participant.ID == "blast_c_268" |
@@ -77,21 +77,21 @@ drive_checklist$age_at_neuro_year <- round(drive_checklist$age_at_neuro_month /1
 #Clean Data
 ```{r,echo=FALSE}
 #Read in demographic data
-bucld_demo_all <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/bucld_demo_all_manually_editted.csv")
+bucld_demo_all <- read.csv("bucld_2019_followup/bucld_demo_all_manually_editted.csv")
 
 
 bucld_demo_all <- bucld_demo_all[-which(bucld_demo_all$part_id == "blast_c_267"| 
                                         bucld_demo_all$part_id == "blast_c_268" |
                                         bucld_demo_all$part_id == "blast_c_269"),]
 #Read in GJT data 
-gjt <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/gjt_score.csv")
+gjt <- read.csv("bucld_2019_followup/gjt_score.csv")
 #Read in analyzed behavioral data
 bucld_blast_data_list <- 
-  list.files(path = "/Users/jojohu/Documents/Qlab/bucld_2019_followup/",
+  list.files(path = "bucld_2019_followup/",
              pattern = "*blast_all.csv", full.names = T)
 
 bucld_spoli_data_list <-
-  list.files(path = "/Users/jojohu/Documents/Qlab/bucld_2019_followup/",
+  list.files(path = "bucld_2019_followup/",
              pattern = "*spoli_all.csv", full.names = T)
 
 bucld_blast_data <- lapply(bucld_blast_data_list, read.csv)
@@ -221,7 +221,7 @@ blast_spoli_data_wide <- blast_spoli_data_wide[-which(blast_spoli_data_wide$age_
 
 # More Data Prep
 ```{r, include = FALSE}
-bucld_scq_web <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/bucld_demo_all_manually_editted.csv")
+bucld_scq_web <- read.csv("bucld_2019_followup/bucld_demo_all_manually_editted.csv")
 bucld_scq_web <- bucld_scq_web[,c("part_id", "final_score")]
 colnames(bucld_scq_web)[colnames(bucld_scq_web) == "final_score"] <- "scq_web"
 
@@ -233,8 +233,8 @@ bucld_all_completed <-
          blast_spoli_data_wide$accuracy_children_vsl_accuracies != "" |
          blast_spoli_data_wide$accuracy_children_lsl_accuracies != ""),]
 
-#Remove blast_c_011 who has not given consent, cannot analyze. 198 has no demo info and has only one SL task completed
-# bucld_all_completed <- bucld_all_completed[-which(bucld_all_completed$part_id == "blast_c_011"),]
+#Remove 198 who has no demo info and has only one SL task completed
+
 
 bucld_all_completed <-
   bucld_all_completed[-which(bucld_all_completed$part_id == "blast_c_198"), ]
@@ -253,7 +253,7 @@ bucld_all_completed <-
       by.x = "part_id", by.y = "Participant.ID",
       all.x = TRUE)
 
-gjt_original_file <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/gjt_score.csv")
+gjt_original_file <- read.csv("bucld_2019_followup/gjt_score.csv")
 
 bucld_all_completed <-
   merge(bucld_all_completed, gjt_original_file[,c(1,4:5)],
@@ -312,8 +312,8 @@ bucld_all_completed_entropy <-
 
 # RSR Clean
 ```{r}
-rsrh <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/rsr_home.csv")
-rsrlab <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/rsr_lab.csv")
+rsrh <- read.csv("bucld_2019_followup/rsr_home.csv")
+rsrlab <- read.csv("bucld_2019_followup/rsr_lab.csv")
   
 rsrh[,c(3:4)] <- 
   lapply(rsrh[,c(3:4)], function(x) {
@@ -390,7 +390,7 @@ rsrh_td <-
 rsrh_asd <-
   length(which(!is.na(bucld_all_completed$rsr_home_raw) & bucld_all_completed$group == "ASD"))
 
-gjt_total <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/gjt_score.csv")
+gjt_total <- read.csv("bucld_2019_followup/gjt_score.csv")
 gjt_total <- length(which(!is.na(gjt_total$a_prime)))
 gjt_td_count <- length(which(!is.na(bucld_all_completed$a_prime) & bucld_all_completed$group == "TD"))
 gjt_asd_count <- length(which(!is.na(bucld_all_completed$a_prime) & bucld_all_completed$group == "ASD"))
@@ -492,9 +492,6 @@ Number of ASD males after removing missing data (less than 5 measures): `r mdata
 
 2 TD females are removed due to > 12 years old, 13 to 11 females.
 
-**Gender is now matched between group**
-
-**Excluding missing data (SL, scq, gjt, rsr), ASD males have `r nrow(male_pool)` participants with relatively complete data.**
 
 
 # Prep data for graphs, remove outliers
@@ -566,10 +563,10 @@ if(length(lsl_accurarcy_outlier) != 0) {
   c("accuracy_children_lsl_accuracies")] <- NA
 }
 #Remove outliners for RT and RT slope data-----------------------------------------------------------------
-ssl_rt_hit_count <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/ssl_rt_hit_trial_count.csv")
-tsl_rt_hit_count <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/tsl_rt_hit_trial_count.csv")
-vsl_rt_hit_count <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/vsl_rt_hit_trial_count.csv")
-lsl_rt_hit_count <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/lsl_rt_hit_trial_count.csv")
+ssl_rt_hit_count <- read.csv("bucld_2019_followup/ssl_rt_hit_trial_count.csv")
+tsl_rt_hit_count <- read.csv("bucld_2019_followup/tsl_rt_hit_trial_count.csv")
+vsl_rt_hit_count <- read.csv("bucld_2019_followup/vsl_rt_hit_trial_count.csv")
+lsl_rt_hit_count <- read.csv("bucld_2019_followup/lsl_rt_hit_trial_count.csv")
 
 
 ssl_rt_hit_count <- 
@@ -647,15 +644,7 @@ if(length(lsl_rt_outlier) != 0) {
 }
 
 # To Do: Remove outliers for Spoli.
-# spoli_c_125 outlier for SSL
-  bucld_sl_bar_all[which(
-    bucld_sl_bar_all$part_id %in% "spoli_c_125"),
-    c("slope_children_ssl_indiv_rts_slope")] <- NA
 
-
-  bucld_all_completed[which(
-    bucld_all_completed$part_id %in% "spoli_c_125"),
-    c("slope_children_ssl_indiv_rts_slope")] <- NA
   
   
 # Remove blast_c_081 (consented, excluded, nonverbal)
@@ -673,7 +662,7 @@ print(bucld_all_completed[which(bucld_all_completed$group == "TD"),
 
 These are removed outliers: 
 
-SSL RT and Slope < 6 hits: `r ssl_rt_outlier` + 1 ASD spoli_c_125 outlier of SSL slope
+SSL RT and Slope < 6 hits: `r ssl_rt_outlier` 
 
 TSL RT and Slope < 6 hits: `r tsl_rt_outlier` 
 
@@ -730,8 +719,6 @@ age_descrip_stat[c(2,4),] <- round(as.numeric(as.character(age_descrip_stat[c(2,
 write.csv(age_descrip_stat, paste0(output_path, "age_descrip_stat.csv"))
 ```
 
-Age is NOT significantly different between TD and ASD (for gender-matched participants. p = )
-
 
 # Count completed data for each task
 ```{r}
@@ -773,9 +760,7 @@ print(taskcomp_count)
  write.csv(taskcomp_count, paste0(output_path, "task_comp_count.csv"))
 ```
 
-**TD are missing 3 SCQs bc parents did not complete all questions on SCQ**
 
-Voluntary withdrawal or technical issues main reasons for missing SL data.
 
 # Group SL analysis & KBIT, SCQ Descriptive Stat
 ```{r}
@@ -847,8 +832,6 @@ t.test(td_sl$scq_total, asd_sl$scq_web)
 
 **LSL accuracy significantly higher (TD > ASD). No outliners in the gender matched online sample.**
 **SSL accuracy marginally signigicant (TD > ASD)**
-SCQ In Lab significantly higher in ASD. No group difference is seen for KBIT. 
-
 
 # Accuracy against chance for TD and ASD
 ```{r}
@@ -1166,7 +1149,7 @@ ggplot(bucld_all_completed_slope, aes(x = group, y = rt_slope, color = group)) +
 # By trial Accuracy GLMER 
 ```{r, eval=F, include = F}
 input_path3 <- 
-  "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/acc_by_trial"
+  "blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/acc_by_trial"
 
 acclist <-
   list.files(path = input_path3,
@@ -1213,7 +1196,7 @@ summary(logacc)
 # By trial RT GLMER 
 ```{r, include = F, eval = F}
 input_path4 <- 
-  "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/rt_by_trial"
+  "blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/rt_by_trial"
 
 rtlist <-
   list.files(path = input_path4,
