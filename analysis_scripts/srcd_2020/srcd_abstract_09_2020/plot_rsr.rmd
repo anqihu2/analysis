@@ -1,0 +1,181 @@
+---
+title: "plot_rsr"
+author: "Jojo Hu"
+date: "10/9/2020"
+output: html_document
+---
+
+```{r}
+allData <- read.csv("/my_path/Qlab/bucld_2019_followup/blast_spoli_data_all_measures_no_outlier.csv")
+
+allData <- allData[, c("part_id", "group", 
+                       "accuracy_children_vsl_accuracies",
+                            "accuracy_children_lsl_accuracies",
+                            "accuracy_children_tsl_accuracies",
+                            "accuracy_children_ssl_accuracies",
+                       # "slope_children_vsl_indiv_rts_slope",
+                       #  "slope_children_lsl_indiv_rts_slope",
+                       #  "slope_children_tsl_indiv_rts_slope",
+                       #  "slope_children_ssl_indiv_rts_slope",
+                            "rsr_raw", "rsr_std")]
+
+library(reshape)
+
+allData <- melt(allData, id.vars = c("part_id", "group", "rsr_raw", "rsr_std"))
+
+allData$value <- as.numeric(as.character(allData$value))
+allData$rsr_raw <- as.numeric(as.character(allData$rsr_raw))
+allData$rsr_std <- as.numeric(as.character(allData$rsr_std))
+
+allData$variable <-
+revalue(allData$variable, c("slope_children_lsl_indiv_rts_slope"="Letter",
+                                     "slope_children_vsl_indiv_rts_slope"="Image",
+                                     "slope_children_tsl_indiv_rts_slope"="Tone",
+                                     "slope_children_ssl_indiv_rts_slope"="Syllable",
+                            "accuracy_children_vsl_accuracies"="Image",
+                                     "accuracy_children_tsl_accuracies"="Tone",
+                                     "accuracy_children_ssl_accuracies"="Syllable",
+                                     "accuracy_children_lsl_accuracies"="Letter"))
+
+
+
+allData$variable <- 
+  factor(allData$variable,levels = c("Image", 
+                                              "Letter", 
+                                              "Tone", 
+                                              "Syllable"))
+
+colnames(allData)[which(colnames(allData) == "group")] <- "Group"
+colnames(allData)[which(colnames(allData) == "variable")] <- "Task"
+
+allData %>%
+ggplot(aes(x = rsr_std, y = value, color = Group, shape = Task)) +
+  geom_point(size = 2, position = pd, stroke = 1.7, alpha = 0.7) +
+  scale_shape_manual(values=c(0, 1, 2, 3)) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "SL Accuracy and Sentence Repetition Correlation",
+         x = "Sentence Repetition Standard Score",  # hange x-axis label
+         y = "SL Accuracy (%)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = rsr_std, y = value), color = "#00BFC4",
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F) +
+   geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = rsr_std, y = value),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = rsr_std, y = value),
+           method = "pearson", 
+           label.x = 50, label.y = 0.9,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = rsr_std, y = value),
+             method = "pearson", 
+             label.x = 50, label.y = 0.8, 
+           inherit.aes = F, color = "#F8766d", size = 5)
+   # geom_text(aes(x= 45, y = 0.96, label = paste0("R = 0.33***")), color = "black", size=5) 
+
+ggsave("/my_path/Qlab/srcd/rsrstd_slacc_corr.png",
+       width = 20, height = 20, units = "cm")
+```
+
+
+```{r}
+allData <- allData[, c("part_id", "group", 
+                       # "accuracy_children_vsl_accuracies",
+                       #      "accuracy_children_lsl_accuracies",
+                       #      "accuracy_children_tsl_accuracies",
+                       #      "accuracy_children_ssl_accuracies",
+                       "slope_children_vsl_indiv_rts_slope",
+                        "slope_children_lsl_indiv_rts_slope",
+                        "slope_children_tsl_indiv_rts_slope",
+                        "slope_children_ssl_indiv_rts_slope",
+                            "rsr_raw", "rsr_std")]
+
+library(reshape)
+
+allData <- melt(allData, id.vars = c("part_id", "group", "rsr_raw", "rsr_std"))
+
+allData$value <- as.numeric(as.character(allData$value))
+allData$rsr_raw <- as.numeric(as.character(allData$rsr_raw))
+allData$rsr_std <- as.numeric(as.character(allData$rsr_std))
+
+allData$variable <-
+revalue(allData$variable, c("slope_children_lsl_indiv_rts_slope"="Letter",
+                                     "slope_children_vsl_indiv_rts_slope"="Image",
+                                     "slope_children_tsl_indiv_rts_slope"="Tone",
+                                     "slope_children_ssl_indiv_rts_slope"="Syllable",
+                            "accuracy_children_vsl_accuracies"="Image",
+                                     "accuracy_children_tsl_accuracies"="Tone",
+                                     "accuracy_children_ssl_accuracies"="Syllable",
+                                     "accuracy_children_lsl_accuracies"="Letter"))
+
+
+
+allData$variable <- 
+  factor(allData$variable,levels = c("Image", 
+                                              "Letter", 
+                                              "Tone", 
+                                              "Syllable"))
+
+colnames(allData)[which(colnames(allData) == "group")] <- "Group"
+colnames(allData)[which(colnames(allData) == "variable")] <- "Task"
+
+allData %>%
+ggplot(aes(x = rsr_std, y = value, color = Group, shape = Task)) +
+  geom_point(size = 2, position = pd, stroke = 1.7, alpha = 0.7) +
+  scale_shape_manual(values=c(0, 1, 2, 3)) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "SL Slope and Sentence Repetition Correlation",
+         x = "Sentence Repetition Standard Score",  # hange x-axis label
+         y = "SL Reaction Time Slope (arbitrary unit/ trial)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = rsr_std, y = value), color = "#00BFC4",
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F) +
+   geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = rsr_std, y = value),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = rsr_std, y = value),
+           method = "pearson", 
+           label.x = 50, label.y = -0.07,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = rsr_std, y = value),
+             method = "pearson", 
+             label.x = 50, label.y = -0.09, 
+           inherit.aes = F, color = "#F8766d", size = 5)
+   # geom_text(aes(x= 45, y = 0.96, label = paste0("R = 0.33***")), color = "black", size=5) 
+
+ggsave("/my_path/Qlab/srcd/rsrStd_slSlope_corr.png",
+       width = 15, height = 15, units = "cm")
+```

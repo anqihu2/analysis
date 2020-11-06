@@ -5,10 +5,12 @@ date: "12/24/2019"
 output: html_document
 ---
 
+This script analyzes the cloze test results from Splash behavioral stimuli pilot. The script requires manual cleaning of answers.
+
 
 # Load original stimuli
 ```{r}
-setwd("Splash/cloze_analysis")
+setwd("/Users/jojohu/Documents/Splash/cloze_analysis")
 
 stim <- read.csv("fill_blank_spreadsheet1.csv")
 
@@ -48,7 +50,7 @@ stim_long$story <- as.character(stim_long$story)
 # This does not include pilot data. Because there are 3 versions, version 3 and 4 without demographic and used in lab consent form for version 3; version 4: used behavioral online consent form;  version 5: with demographic and used the behavioral online consent form.
 
 data_list <-
-  list.files(path = "Splash/cloze_analysis/raw_data",
+  list.files(path = "/Users/jojohu/Documents/Splash/cloze_analysis/raw_data",
              pattern = "*v\\S+.csv", full.names = T)
 
 
@@ -126,7 +128,7 @@ cdata <- cdata[!rownames(cdata) %in% excluderow,]
 
 num_trial <- cdata %>% dplyr::count(subid) 
 
-# Check trial numbers for each participant. Not applicable if participants completed different numbers of stories.
+
 # if (sum(num_trial$n %% 9) != 0) {
 #    stop("Check the number of trials for these participants:")
 #    print(num_trial[which(num_trial$n != 234),])
@@ -254,7 +256,7 @@ print(prelim_acc_by_story)
 
 write.csv(cdata, "cdata.csv")
 ```
-**Accuracy lower than 50% before typo is removed: `r prelim_outlier`** Same as the incomplete data. Removed.
+**Accuracy lower than 50% before typo is removed: `r prelim_outlier`** Same as the incomplete part. Removed.
 
 
 # Check Typos
@@ -272,7 +274,7 @@ typo_row <- as.numeric(as.character(unlist(strsplit(typo_row, ","))))
 
 cdata[typo_row, "typo"] <- 1
 
-write.csv(cdata, "Splash/cloze_analysis/typo.csv")
+write.csv(cdata, "/Users/jojohu/Documents/Splash/cloze_analysis/typo.csv")
 ```
 
 # Manual cleaning of typo
@@ -290,7 +292,6 @@ cdata<- cdata[!colnames(cdata) %in% "accuracy"]
 cdata$answer <- as.character(cdata$answer)
 cdata$key <- as.character(cdata$key)
 
-# Automate cleaning of formating error (extra space, etc.)
 # Get rid of all non-alphabetic characters
 cdata$answer <- str_extract(cdata$answer, "[:alpha:]+")
 
@@ -314,7 +315,9 @@ print(acc_by_story)
 # write.csv(cdata, "wrong_answer.csv")
 ```
 
-**Manual checking and cleaning of not identified typos**
+# Manual cleaning of wrong answers due to real synonymns (airplane-plane) 
+Automate cleaning of formating error (extra space, etc.)
+
 **Save manually cleaned typo and accuracy to typo_checked.csv**
 
 # Generate wrong answers
@@ -350,7 +353,6 @@ highw <-highw[!names(highw) %in% "fname"]
 write.csv(highw, "wrong_trials.csv", row.names = FALSE)
 ```
 
-**Manual cleaning of wrong answers due to real synonymns (airplane-plane)**
 
 # Recalculate Accuracy after answer key and synonym checked 
 ```{r}
@@ -367,14 +369,18 @@ cdataFinal$key <- as.character(cdataFinal$key)
 accuracy <- ifelse(cdataFinal$answer == cdataFinal$key,1,0)
 
 cdataFinal<- cbind(cdataFinal, as.data.frame(accuracy))
+
+# cdata[which(cdata$story == "story21_fir" & is.na(cdata$accuracy)), "accuracy"] <- 0
 ```
 
-
-# Separate Accuracy by Noun/ Verb conditions
 ```{r}
-noun_condition <- read.csv("Splash/cloze_analysis/stim_word/noun_cond_key.csv")
+noun_condition <- read.csv("/Users/jojohu/Documents/Splash/cloze_analysis/stim_word/noun_cond_key.csv")
 
-cdataFinal <- merge(cdataFinal, noun_condition, by = c("story", "trial"), all.x = T)
+verb_condition <- read.csv("/Users/jojohu/Documents/Splash/cloze_analysis/stim_word/verb_cond_key.csv")
+
+allCond <- rbind(noun_condition, verb_condition)
+
+cdataFinal <- merge(cdataFinal, allCond, by = c("story", "trial"), all.x = T)
 
 noun_story <- c("story1_fir",
                        "story2_fir",
@@ -389,26 +395,61 @@ noun_story <- c("story1_fir",
                        "story21_fir")
 
 cdataFinal[which(cdataFinal$story %in% noun_story), "word_class"] <- "noun"
+
 cdataFinal[which(!cdataFinal$story %in% noun_story), "word_class"] <- "verb"
 
 
+# All stories
 
 acc_by_story <- 
   cdataFinal %>%
   group_by(story) %>%
   dplyr::summarise(correct_trial = sum(accuracy), total_trial = n(),accuracy = sum(accuracy)/ n())
 
-
-
 print(acc_by_story)
 
+# All Nouns
+# All Verbs
+cdataFinal[which(cdataFinal$word_class == "noun"),] %>%
+  group_by(story, condition) %>%
+  dplyr::summarise(correct_trial = sum(accuracy), total_trial = n(),accuracy = sum(accuracy)/ n())
 
+
+# All Verbs
+verbAcc <- 
+cdataFinal[which(cdataFinal$word_class == "verb"),] %>%
+  group_by(story, condition, trial) %>%
+  dplyr::summarise(correct_trial = sum(accuracy), total_trial = n(),accuracy = sum(accuracy)/ n())
+
+
+cdataFinal[which(cdataFinal$word_class == "noun"),] %>%
+  group_by(story, condition, trial) %>%
+  dplyr::summarise(correct_trial = sum(accuracy), total_trial = n(),accuracy = sum(accuracy)/ n())
+
+
+verbAccStory <- 
+  cdataFinal[which(cdataFinal$word_class == "verb"),] %>%
+  group_by(story, condition) %>%
+  dplyr::summarise(correct_trial = sum(accuracy), total_trial = n(),accuracy = sum(accuracy)/ n())
+
+keyVerbLearn <- verbAcc[which(verbAcc$accuracy > 0.9 & verbAcc$condition == "M+"), c("story", "word")]
+
+verbAccStory[which(verbAccStory$accuracy > 0.87), 
+                    # & verbAccStory$condition == "M+"), 
+             c("story", "condition")]
+
+
+
+write.table(keyVerbLearn, "/Users/jojohu/Documents/Splash/cloze_analysis/stim_word/keyVerbLearn.txt", row.names = F, col.names = F, quote = F)
 ```
 
-# Accuracy by condition modeling
+# Accuracy by condition
 ```{r}
-acc_noun <- cdataFinal[which(cdataFinal$story %in% noun_story), c("subid", "story", "trial", "condition", "key", "answer", "accuracy")]
+acc_noun <- cdataFinal[which(cdataFinal$story %in% noun_story), 
+                       c("subid", "story", "trial", "condition", "key", "answer", "accuracy", "word_class")]
 
+acc_verb <- cdataFinal[-which(cdataFinal$story %in% noun_story), 
+                       c("subid", "story", "trial", "condition", "key", "answer", "accuracy", "word_class")]
 
 
 acc_noun$story <- as.factor(acc_noun$story)
@@ -440,7 +481,7 @@ ezANOVA(accN_by_trial, accuracy, wid = story, within = condition, type = 3, deta
 
 
 acc_noun %>%
-  group_by(condition) %>%
+  group_by(story, condition) %>%
   dplyr::summarise(correct_trial = sum(accuracy), total_trial = n(),accuracy = sum(accuracy)/ n())
 ```
 
