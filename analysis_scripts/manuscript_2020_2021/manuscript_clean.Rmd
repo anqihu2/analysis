@@ -1,0 +1,3791 @@
+---
+title: "manuscript_analysis_clean"
+author: "Jojo Hu"
+date: "02/18/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Manuscript Analysis Cleaned (02/18/2021)
+
+
+``` {r}
+setwd("/Users/jojohu/Documents/Qlab/manuscript")
+
+allData <- read.csv("allSLData.csv")
+```
+
+# Section 1: Demographic Analysis
+
+## Gender
+```{r}
+library(reshape)
+
+allData_gender_wide <- allData[,c("part_id", "group", "gender")]
+
+allData_gender_long <- melt(allData_gender_wide, id.vars = c("part_id", "group"))
+
+gender_wide <- cast(allData_gender_long, group~value, length)
+
+# Chi-square on gender
+# p<0.05 tells us that they are not matched for gender between group
+print(gender_wide)
+
+print(chisq.test(gender_wide))
+```
+
+**Gender is matched between group**
+
+## Age
+```{r}
+allData$age_at_web_year <- allData$age_at_web_month/12
+
+td_age <- 
+  allData[which(allData$group == "TD"), 
+                       c("part_id", "group", "age_at_web_month", "age_at_web_year")]
+asd_age <- 
+  allData[which(allData$group == "ASD"), 
+                       c("part_id", "group", "age_at_web_month", "age_at_web_year")]
+
+library("pastecs")
+
+get_age_decrip <- function(AgeDF, group) {
+  age_stat <- stat.desc(AgeDF)[c("mean", "std.dev", "max", "min", "nbr.val"),"age_at_web_year"]
+  age_stat <- append(age_stat, group)
+  age_stat <- data.frame(age_stat)
+  age_stat <- cbind(c("mean", "std.dev", "max", "min", "n", "group"), age_stat)
+  age_stat <- t(age_stat)
+  return(age_stat)
+  }
+
+
+td_age_descrip <- get_age_decrip(td_age, "TD")
+asd_age_descrip <- get_age_decrip(asd_age, "ASD")
+
+age_descrip_stat <- rbind(td_age_descrip, asd_age_descrip)
+
+print(age_descrip_stat)
+
+age_descrip_stat[c(2,4),-c(6)] <- round(as.numeric(as.character(age_descrip_stat[c(2,4),-c(6)])),2)
+
+#Test age difference between group, p <0.05 means age is significantly different between group
+print(t.test(td_age$age_at_web_month, asd_age$age_at_web_month))
+
+print(t.test(td_age$age_at_web_year, asd_age$age_at_web_year))
+
+# write.csv(age_descrip_stat, "age_descrip_stat.csv")
+```
+
+# Remove outliers for RT and RT slope 
+```{r, include = F}
+library(stringr)
+
+ssl_rt_hit_count <- read.csv("ssl_rt_hit_trial_count.csv")
+tsl_rt_hit_count <- read.csv("tsl_rt_hit_trial_count.csv")
+vsl_rt_hit_count <- read.csv("vsl_rt_hit_trial_count.csv")
+lsl_rt_hit_count <- read.csv("lsl_rt_hit_trial_count.csv")
+
+ssl_rt_hit_count$task <- "ssl"
+tsl_rt_hit_count$task <- "tsl"
+vsl_rt_hit_count$task <- "vsl"
+lsl_rt_hit_count$task <- "lsl"
+
+all_rt_hit_count <- 
+  rbind(ssl_rt_hit_count,
+      tsl_rt_hit_count,
+      vsl_rt_hit_count,
+      lsl_rt_hit_count)
+
+
+
+rt_hit_count_child <- all_rt_hit_count[which(str_detect(
+  all_rt_hit_count$part_id, "blast_c_|spoli_c")),]
+
+rt_hit_count_child <- rt_hit_count_child[which(rt_hit_count_child$part_id %in%
+                                                 allData$part_id),]
+
+
+child_rt_outlier <- rt_hit_count_child[which(rt_hit_count_child$hit_trial_number < 6), 
+                   c("part_id", "task")]
+```
+
+
+
+```{r}
+rt_hit_count_child[which(rt_hit_count_child$hit_trial_number < 6), 
+                   c("part_id", "task", "hit_trial_number")]
+```
+**Table above are RT outliers in children with less than 6 hit trials in the exposure phase**
+
+
+# Remove outliers in the children group
+```{r, include = F}
+outlier_extract <-
+  function(DF, task) {
+    part_id <- DF[which(DF$task == task), "part_id"]
+    return(part_id)
+  }
+
+ssl_rt_outlier <- outlier_extract(child_rt_outlier, "ssl")
+tsl_rt_outlier <- outlier_extract(child_rt_outlier, "tsl")
+vsl_rt_outlier <- outlier_extract(child_rt_outlier, "vsl")
+lsl_rt_outlier <- outlier_extract(child_rt_outlier, "lsl")
+
+if(length(ssl_rt_outlier) != 0) {
+  allData[which(
+    allData$part_id %in% ssl_rt_outlier),
+  c("ssl_rt",
+    "ssl_slope")] <- NA
+}
+
+
+if(length(tsl_rt_outlier) != 0) {
+  allData[which(
+    allData$part_id %in% tsl_rt_outlier),
+  c("tsl_rt",
+    "tsl_slope")] <- NA
+}
+
+
+if(length(vsl_rt_outlier) != 0) {
+  allData[which(
+    allData$part_id %in% vsl_rt_outlier),
+    c("vsl_rt",
+      "vsl_slope")] <- NA
+}
+
+
+if(length(lsl_rt_outlier) != 0) {
+  allData[which(
+    allData$part_id %in% lsl_rt_outlier),
+    c("lsl_rt",
+      "lsl_slope")] <- NA
+}
+
+# Spoli_c_097 has invalid key press (error due to jspsych during the experiment adminstartion)
+if(length(which(allData$part_id %in% "spoli_c_097")) != 0) {
+  allData[which(
+    allData$part_id %in% "spoli_c_097"),
+    c("ssl_rt",
+      "ssl_slope")] <- NA
+}
+
+```
+
+These are removed outliers in the children group: 
+
+SSL RT and Slope < 6 hits: `r ssl_rt_outlier` + 1 ASD spoli_c_097 (jsPsyc technical error in SSL RT) 
+
+TSL RT and Slope < 6 hits: `r tsl_rt_outlier` 
+
+VSL RT and Slope < 6 hits: `r vsl_rt_outlier` 
+
+LSL RT and Slope < 6 hits: `r lsl_rt_outlier` 
+
+
+
+# Extract data for each measure (accuracy, slope, rt, entropy)
+```{r, include = F}
+extract_measure_child <-
+function(df, taskCol) {
+  df <- 
+    allData[,which(str_detect(
+      colnames(allData), paste0("part_id|group|age_at_web_year|", taskCol)))]
+  
+  df <- melt(df, id.vars = c("part_id", "group", "age_at_web_year"))
+  
+  colnames(df)[colnames(df) == "variable"] <- "task"
+  colnames(df)[colnames(df) == "value"] <- taskCol
+  
+  return(df)
+}
+
+allData_acc <- extract_measure_child(allData_acc, "acc")
+allData_slope <- extract_measure_child(allData_slope, "slope")
+allData_rt <- extract_measure_child(allData_rt, "rt")
+allData_entropy <- extract_measure_child(allData_entropy, "ent")
+
+setdiff(unique(allData_acc$part_id), unique(allData$part_id))
+
+colnames(allData_acc)[colnames(allData_acc) == "acc"] <- "accuracy"
+colnames(allData_entropy)[colnames(allData_entropy) == "ent"] <- "entropy"
+colnames(allData_rt)[colnames(allData_rt) == "rt"] <- "mean_rt"
+colnames(allData_slope)[colnames(allData_slope) == "slope"] <- "rt_slope"
+
+allData_acc <-
+  allData_acc[-which(str_detect(allData_acc$task, "random|predictable")),]
+    
+allData_entropy <-
+  allData_entropy[-which(str_detect(allData_entropy$task, "random|predictable")),]
+```
+
+
+# Count the number of completed participants for each task
+
+```{r}
+## Add language levels in ASD
+demo_all <- read.csv("online_demo_all.csv")
+
+allData <- merge(allData, 
+                  demo_all[,c("part_id", "rbs_r", "lang_spark_age", "asd", "used_words_age_mos", "combined_words_age_mos",
+                     "combined_phrases_age_mos", "cog_age_level", "cog_age_equivalent",
+                  "cog_test_score", "function_age_level", "language_age_level")], by.x = "part_id", by.y = "part_id",
+                  all.x = T)
+
+
+library(dplyr)
+
+allData %>%
+  group_by(group, language_age_level) %>%
+  dplyr::summarise(n = n())
+```
+
+```{r,include = F}
+allData$scq_web <- as.numeric(as.character(allData$scq_web))
+
+# allData$scq <- coalesce(allData$scq_total, allData$scq_web)
+
+taskcomp_td <-
+sapply(allData[which(allData$group == "TD"),
+                           c("scq_web",
+                             "scq_total",
+                             "rbs_r",
+                             "kbit_matrices_raw",
+                           "rsr_raw", 
+                           "a_prime",
+                            "vsl_acc", 
+                           "lsl_acc",
+                           "tsl_acc", 
+                           "ssl_acc",
+                           "lsl_predictable_2afc_acc")],
+       function(x)sum(!is.na(x)))
+
+
+taskcomp_asd <-
+  sapply(allData[which(allData$group == "ASD"),
+                           c("scq_web",
+                             "scq_total",
+                             "rbs_r",
+                             "kbit_matrices_raw",
+                           "rsr_raw", 
+                           "a_prime",
+                            "vsl_acc", 
+                           "lsl_acc",
+                           "tsl_acc", 
+                           "ssl_acc",
+                           "lsl_predictable_2afc_acc")],
+       function(x)sum(!is.na(x)))
+
+taskcomp_count<- rbind(taskcomp_td, taskcomp_asd)
+
+taskcomp_count <- data.frame(taskcomp_count)
+
+colnames(taskcomp_count) <- c("SCQ Lifetime", "SCQ Current", "RBS-R", "KBIT", "Sentence Recall", "Grammaticality Judgement", "Image", "Letter", "Tone", "Syllable", "Letter Predictable")
+
+missing_scq_web <- allData[which(is.na(allData$scq_web) & allData$group == "ASD"), "part_id"]
+# write.csv(missing_scq_web, "missing_scq_web.csv")
+```
+
+```{r}
+print(taskcomp_count)
+```
+
+**Missing SCQ: spoli_c_439; spoli_c_448: No SCQ-L scores from SPARK; blast_c_438: Not from SPARK**
+
+## KBIT, SCQ Descriptive Stat
+```{r, include = F}
+td_sl <- 
+  allData[which(allData$group == "TD"),]
+
+
+asd_sl <- 
+  allData[which(allData$group == "ASD"),]
+
+library("pastecs")
+td_sl$scq_web <- as.numeric(as.character(td_sl$scq_web))
+
+td_kbit_scq_descrip_stat <-
+  stat.desc(td_sl[, c(
+    "kbit_matrices_raw",
+    "kbit_matrices_std",
+    "rbs_r",
+    "scq_total",
+    "rsr_raw",
+    "rsr_std",
+    "a_prime",
+    "gjt_std"
+  )])
+
+td_kbit_scq_descrip_stat <-
+  td_kbit_scq_descrip_stat[c("nbr.val", "mean", "std.dev"),
+                           c("kbit_matrices_raw",
+                             "kbit_matrices_std",
+                             "rbs_r",
+                             "scq_total",
+                             "rsr_raw",
+                             "rsr_std",
+                             "a_prime",
+                             "gjt_std"
+                           )]
+
+td_kbit_scq_descrip_stat[nrow(td_kbit_scq_descrip_stat) + 1,] <- "TD"
+print(td_kbit_scq_descrip_stat)
+
+asd_kbit_scq_descrip_stat <-
+  stat.desc(asd_sl[, c(
+    "kbit_matrices_raw",
+    "kbit_matrices_std",
+    "rbs_r",
+    "scq_total" ,
+    "scq_web",
+    "rsr_raw",
+    "rsr_std",
+    "a_prime",
+    "gjt_std"
+  )])
+
+asd_kbit_scq_descrip_stat <-
+  asd_kbit_scq_descrip_stat[c("nbr.val", "mean", "std.dev"),
+                            c("kbit_matrices_raw",
+                              "kbit_matrices_std",
+                              "rbs_r",
+                              "scq_total" ,
+                              "scq_web",
+                              "rsr_raw",
+                              "rsr_std",
+                              "a_prime",
+                              "gjt_std"
+                            )]
+asd_kbit_scq_descrip_stat[nrow(asd_kbit_scq_descrip_stat) + 1,] <- "ASD"
+print(asd_kbit_scq_descrip_stat)
+```
+
+```{r}
+print(td_kbit_scq_descrip_stat)
+print(asd_kbit_scq_descrip_stat)
+```
+
+# RSR and GJT Descriptive Stat
+```{r}
+tdRSRDec <- stat.desc(td_sl[,c("rsr_std", "rsr_raw", "a_prime", "gjt_std")])
+tdRSRDec <- tdRSRDec[c("nbr.val","mean", "std.dev", "max", "min"),]
+tdRSRDec <- data.frame(tdRSRDec)
+tdRSRDec[nrow(tdRSRDec)+1,] <- "TD"
+
+asdRSRDec <- stat.desc(asd_sl[,c("rsr_std", "rsr_raw", "a_prime", "gjt_std")])
+asdRSRDec <- asdRSRDec[c("nbr.val","mean", "std.dev", "max", "min"),]
+asdRSRDec <- data.frame(asdRSRDec)
+asdRSRDec[nrow(asdRSRDec)+1,] <- "ASD"
+
+GJTrsrDec <- cbind(tdRSRDec, asdRSRDec)
+print(GJTrsrDec)
+
+asd_sl[which(is.na(asd_sl$language_age_level)), "gjt_std"]
+asd_sl[which(is.na(asd_sl$language_age_level)), "a_prime"]
+
+# write.csv(GJTrsrDec, "paper_analysis_matched/GJTrsrDec.csv")
+```
+
+```{r}
+# SCQ comparison between online ASD and in lab TD
+t.test(td_sl$scq_total, asd_sl$scq_web)
+
+t.test(td_sl$rsr_raw, asd_sl$rsr_raw)
+
+t.test(td_sl$a_prime, asd_sl$a_prime)
+
+t.test(td_sl$rsr_std, asd_sl$rsr_std)
+
+t.test(td_sl$gjt_std, asd_sl$gjt_std)
+```
+
+
+
+```{r, include = F}
+library(ggplot2)
+
+pd <- position_dodge(width = 0.2)
+
+library(ggbeeswarm)
+allData[which(allData$group == "ASD"),] %>%
+ggplot(aes(x = language_age_level, y = a_prime)) +
+  geom_bar(
+    aes(fill = group),
+    position = position_dodge(),
+    width = 0.9,
+    stat = "summary",
+    fun.y = "mean",
+  ) +
+ labs(title = "Relationship between Language Level and GJT in ASD",
+         x = "Language Level compared to Age (measured at younger or concurrent age as SL)",  # Change x-axis label
+         y = "GJT Raw Score (A')") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=12, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=8, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold"),
+        legend.title=element_text(size=15, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),         # Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) + 
+  geom_beeswarm(
+    aes(fill = group),
+    dodge.width = 1,
+    cex = 2.5,
+    size = 0.8,
+    show.legend = FALSE,
+    shape = 1
+  ) 
+
+ # ggsave("manuscript_figure/ asd_lang_level_gjt.png")
+allData[which(allData$group == "ASD"),] %>%
+  ggplot(aes(x = language_age_level, y = lsl_slope)) +
+  geom_bar(
+    aes(fill = group),
+    position = position_dodge(),
+    width = 0.9,
+    stat = "summary",
+    fun.y = "mean",
+  ) +
+ labs(title = "Relationship between Language Level and Letter SL in ASD",
+         x = "Language Level compared to Age (measured at younger or concurrent age as SL)",  # Change x-axis label
+         y = "Letter SL Reaction Time Slope") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=12, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=8, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold"),
+        legend.title=element_text(size=15, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),         # Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)  # Add line to y axis
+  ) +
+  geom_beeswarm(
+    aes(fill = group),
+    dodge.width = 1,
+    cex = 2.5,
+    size = 0.8,
+    show.legend = FALSE, 
+    shape = 1
+  )
+```
+
+# SL Descriptive Analysis (Group accuracy against chance level; RT slope against 0)
+# Accuracy against chance for TD and ASD
+```{r}
+t_test_against_chance <- 
+  function(x){
+  test <- t.test(x, mu=0.5, alternative= "greater")
+  data.frame(p_value = test$p.value,
+             df = test$parameter,
+             t_stat = test$statistic)
+  }
+
+#TD without outliers
+sapply(colnames(td_sl)[c(7:9, 25)], 
+       function(x) t_test_against_chance(td_sl[,x]))
+
+#ASD without outliers
+sapply(colnames(asd_sl)[c(7:9, 25)], 
+       function(x) t_test_against_chance(asd_sl[,x]))
+
+
+
+t_test_against_zero <- 
+  function(x){
+  test <- t.test(x, mu=0, alternative= "less")
+  data.frame(p_value = test$p.value,
+             df = test$parameter,
+             t_stat = test$statistic)
+  }
+
+
+sapply(colnames(td_sl)[c(21:24)], 
+       function(x) t_test_against_zero(td_sl[,x]))
+
+sapply(colnames(asd_sl)[c(21:24)], 
+       function(x) t_test_against_zero(asd_sl[,x]))
+```
+
+
+# Group Comparison of SL
+
+```{r, include = F}
+# Add modality and domain category to long-format data
+library("stringr")
+add_dom_mod_func <- 
+function(df) {
+df[which(str_detect(df$task, "ssl")), "domain"] <- "ling"
+df[which(str_detect(df$task, "lsl")), "domain"] <- "ling"
+df[which(str_detect(df$task, "vsl")), "domain"] <- "nonling"
+df[which(str_detect(df$task, "tsl")), "domain"] <- "nonling"
+df[which(str_detect(df$task, "ssl")), "modality"] <- "auditory"
+df[which(str_detect(df$task, "tsl")), "modality"] <- "auditory"
+df[which(str_detect(df$task, "vsl")), "modality"] <- "visual"
+df[which(str_detect(df$task, "lsl")), "modality"] <- "visual"
+return (df)
+}
+
+allData_acc <- add_dom_mod_func(allData_acc)
+allData_entropy <- add_dom_mod_func(allData_entropy)
+allData_rt <- add_dom_mod_func(allData_rt)
+allData_slope <- add_dom_mod_func(allData_slope)
+```
+
+
+# LMER for Domain and Modality for RT Slope for children
+```{r, include = F}
+library(lmerTest)
+
+allData_slope$group <- factor(allData_slope$group,
+                                    levels = c("ASD", 
+                                               "TD"))
+
+allData_slope$domain <- factor(allData_slope$domain,
+                                    levels = c("nonling", 
+                                               "ling"))
+
+allData_slope$modality <- factor(allData_slope$modality,
+                                             levels = c("auditory", 
+                                               "visual"))
+
+# Run LMER for RT slope by task
+library("stringr")
+allData_slope$task <- as.factor(allData_slope$task)
+
+m1_slope <- lmer(rt_slope~group*task + (1+task|part_id),
+          data=allData_slope,
+          control=lmerControl(optimizer = "bobyqa",
+                              check.nobs.vs.nRE="ignore"),
+          contrasts = list(group = c(-1,1)))
+summary(m1_slope)
+
+# Run LMER for RT slope by domain and modality
+m1_slope_dom_mod <- lmer(rt_slope~group*domain*modality + (0 +domain | part_id) + 
+                           (0 + modality | part_id) + (1|part_id), 
+                         data = allData_slope,
+                         control=lmerControl(optimizer = "bobyqa"),
+                         contrasts = list(domain = c(-1, 1),
+                                          modality = c(-1, 1),
+                                      group = c(-1,1)))
+summary(m1_slope_dom_mod)
+
+
+library(afex)
+all_fit(m1_slope_dom_mod)
+
+# Model was reduced by these steps:
+# lmer(rt_slope~group*domain + (1+domain|part_id), 
+#                          data = allData_slope,
+#                          contrasts = list(domain = c(-1, 1),
+#                                       group = c(-1,1)))
+# to lmer(rt_slope~group*domain + (0+domain|part_id) + (1|part_id), same contrasts)
+# to lmer(rt_slope~group*domain + (1|part_id), same contrasts)
+
+
+m1_slope_dom <- lmer(rt_slope~group*domain + (0 + domain|part_id) + (1|part_id), 
+                     data = allData_slope,
+                     # control = lmerControl(optimizer = "bobyqa"),
+                         # control=lmerControl(optimizer = "bobyqa", check.nobs.vs.nRE="ignore"),
+                         contrasts = list(domain = c(-1, 1),
+                                      group = c(-1,1)))
+summary(m1_slope_dom)
+
+
+
+```
+
+```{r, include= F}
+scaled_allData_slope <- allData_slope
+
+scaled_allData_slope[which(scaled_allData_slope$modality == "visual"), "rt_slope"] <-
+  scale(scaled_allData_slope[which(scaled_allData_slope$modality == "visual"), "rt_slope"], center = T)
+
+
+scaled_allData_slope[which(scaled_allData_slope$modality == "auditory"), "rt_slope"] <-
+  scale(scaled_allData_slope[which(scaled_allData_slope$modality == "auditory"), "rt_slope"], center = T)
+
+scaled_allData_slope$group <- factor(scaled_allData_slope$group,
+                                    levels = c("ASD", 
+                                               "TD"))
+
+scaled_allData_slope$domain <- factor(scaled_allData_slope$domain,
+                                    levels = c("nonling", 
+                                               "ling"))
+
+scaled_allData_slope$modality <- factor(scaled_allData_slope$modality,
+                                             levels = c("auditory", 
+                                               "visual"))
+
+m1_scaled_slope_dom_mod <- lmer(rt_slope~group*domain*modality + (0 +domain | part_id) + 
+                           (0 + modality | part_id) + (1|part_id), 
+                         data = scaled_allData_slope,
+                         control=lmerControl(optimizer = "bobyqa", check.nobs.vs.nRE="ignore"),
+                         contrasts = list(domain = c(-1, 1),
+                                          modality = c(-1, 1),
+                                      group = c(-1,1)))
+summary(m1_scaled_slope_dom_mod)
+```
+
+
+
+# By trial Accuracy GLMER
+```{r, include = F}
+input_path3 <-
+  "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/acc_by_trial"
+
+input_path4 <- "/Users/jojohu/Documents/Qlab/spoli/data_summaries/breakdown/acc_by_trial"
+
+acclist <-
+  list.files(path = input_path3,
+             pattern = "*by_trial.csv", full.names = T)
+
+acclistSPL <-
+  list.files(path = input_path4,
+             pattern = "*by_trial.csv", full.names = T)
+
+
+library("stringr")
+
+tname <- str_extract(basename(acclist), "(?<=blast_)\\S{3}")
+
+tnameSPL <- str_extract(basename(acclistSPL), "(?<=spoli_)\\S{3}")
+
+
+acc_trial <- lapply(acclist, read.csv)
+
+acc_trialSPL <- lapply(acclistSPL, read.csv)
+
+
+
+for (i in 1:length(acc_trial)) {
+  acc_trial[[i]]$task <-tname[i]
+}
+
+acc_trial <- do.call(rbind, acc_trial)
+
+acc_trial <- acc_trial[,!names(acc_trial) %in% "X"]
+
+
+for (i in 1:length(acc_trialSPL)) {
+  acc_trialSPL[[i]]$task <-tnameSPL[i]
+}
+
+acc_trialSPL <- do.call(rbind, acc_trialSPL)
+
+acc_trialSPL <- acc_trialSPL[,!names(acc_trialSPL) %in% "X"]
+
+acc_trial <- rbind(acc_trial, acc_trialSPL)
+
+
+acc_trial <-
+  merge(acc_trial,
+      allData[,c("part_id", "group", "gender", "age_at_web_month", "age_at_web_year", "scq_web", "scq_total", 
+                 "a_prime", "gjt_std")],
+      by.x = "subj",
+      by.y = "part_id",
+      all.y = T)
+
+setdiff(unique(allData$part_id), unique(acc_trial$subj))
+
+acc_trial$corr <- as.factor(acc_trial$corr)
+acc_trial$subj <- as.factor(acc_trial$subj)
+acc_trial$task <- as.factor(acc_trial$task)
+acc_trial$group <- as.factor(acc_trial$group)
+
+# # write.csv(acc_trial, "/Users/jojohu/Documents/Qlab/bucld_2019_followup/acc_trial.csv")
+
+# Important Step, match the dataset to the current analysis
+acc_trial <- acc_trial[which(acc_trial$subj %in% allData$part_id),]
+
+
+acc_trial <- add_dom_mod_func(acc_trial)
+```
+
+# GLMER results for children
+```{r}
+head(acc_trial)
+
+acc_trial$task <- as.factor(acc_trial$task)
+acc_trial$subj <- as.factor(acc_trial$subj)
+acc_trial$age_at_web_year <- as.numeric(as.character(acc_trial$age_at_web_year))
+
+typeof(acc_trial$trial_order)
+typeof(acc_trial$task)
+typeof(acc_trial$corr)
+typeof(acc_trial$subj)
+
+acc_trial$task <- 
+  factor(acc_trial$task,
+         levels = c("lsl", 
+                    "ssl", 
+                    "vsl", 
+                    "tsl"))
+
+acc_trial$group <- 
+  factor(acc_trial$group,
+         levels = c("ASD", 
+                    "TD"))
+
+acc_trial$domain <- 
+  factor(acc_trial$domain,
+         levels = c("nonling", 
+                    "ling"))
+
+acc_trial$modality <- 
+  factor(acc_trial$modality,
+         levels = c("auditory", 
+                    "visual"))
+
+# contr.sum(n=4)
+
+```
+
+```{r}
+# This model reduction process helps the model to converge:
+# (1+domain|subj) + (1+modality|subj) + (1|trial_order) (not converged)
+# (1+domain|subj) + (0+modality|subj) + (1|trial_order) + (1|subj) (not converged)
+# (0+domain|subj) + (0+modality|subj) + (1|trial_order) + (1|subj) (not converged)
+# (1+domain|subj) + (0+modality|subj) (converged)
+# (0+domain|subj) + (0+modality|subj) + (1|subj) (even simpler model, of course converged)
+
+# logacc_dom <-
+#   glmer(corr~group*domain*modality + (0+domain|subj) + (0+modality|subj) + (1|subj) + (1|trial_order), data = acc_trial,
+#     family = binomial,
+#     contrasts = list(domain = c(-1, 1), modality = c(-1, 1), group = c(-1,1)),
+#     control=glmerControl(optimizer = "bobyqa"))
+# 
+# summary(logacc_dom)
+# 
+# logacc_dom_gjt <-
+#   glmer(corr~group*domain*modality + gjt_std + (0+domain|subj) + (0+modality|subj) + (1|subj) + (1|trial_order), data = acc_trial,
+#     family = binomial,
+#     contrasts = list(domain = c(-1, 1), modality = c(-1, 1), group = c(-1,1)),
+#     control=glmerControl(optimizer = "bobyqa"))
+# 
+# summary(logacc_dom_gjt)
+```
+
+```{r, eval = F, include = F}
+# 
+# Plot model fit whether the categorization of y is correctly predicted by x?:
+# d <- acc_trial
+# d <- d[which(!is.na(d$gjt_std)),]
+# nrow(d)
+# d$predicted <- predict(logacc_mod, type="response")
+# d$residuals <- residuals(logacc_mod, type = "response")
+# 
+# d$corr <- as.numeric(d$corr)
+# # Steps 3 and 4: plot the results
+# ggplot(d, aes(x = group, y = corr)) +
+#   geom_segment(aes(xend = group, yend = predicted), alpha = .2) +
+#   geom_point(aes(color = residuals)) +
+#   scale_color_gradient2(low = "blue", mid = "white", high = "red") +
+#   guides(color = FALSE) +
+#   geom_point(aes(y = predicted), shape = 1) +
+#   theme_bw()
+
+```
+
+
+
+
+
+# T-test TD vs. ASD
+```{r}
+t_test_multi_pair <- 
+  function(x,y){
+  test <- t.test(x,y)
+
+  data.frame(p_value = test$p.value,
+             df = test$parameter,
+             t_stat = test$statistic)
+  }
+
+
+#Results withOUT outliers
+# T test for SL
+sapply(intersect(colnames(td_sl),colnames(asd_sl))[c(7:9, 25)], 
+                 function(x) t_test_multi_pair(td_sl[,x], asd_sl[,x]))
+
+sapply(intersect(colnames(td_sl),colnames(asd_sl))[c(13:15, 26)], 
+                 function(x) t_test_multi_pair(td_sl[,x], asd_sl[,x]))
+
+sapply(intersect(colnames(td_sl),colnames(asd_sl))[c(17:20)], 
+                 function(x) t_test_multi_pair(td_sl[,x], asd_sl[,x]))
+
+sapply(intersect(colnames(td_sl),colnames(asd_sl))[c(21:24)], 
+                 function(x) t_test_multi_pair(td_sl[,x], asd_sl[,x]))
+# Still in lab sample comparison for Kbit and SCQ:in the lab 
+sapply(intersect(colnames(td_sl),colnames(asd_sl))[c(27:28, 29)], 
+                 function(x) t_test_multi_pair(td_sl[,x], asd_sl[,x]))
+
+```
+
+
+# By trial RT LMER (Need to use Scale RT for by trial RT LMER? Outlier removed)
+# To Do: Scale by trial RT? Add target image as a random effect? Add mean RT as fixed effect?
+```{r, include = F}
+input_path5 <-
+  "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/rt_by_trial"
+
+input_path6 <-
+  "/Users/jojohu/Documents/Qlab/spoli/data_summaries/breakdown/rt_by_trial"
+
+
+rtlist <-
+  list.files(path = input_path5,
+             pattern = "*by_trial.csv", full.names = T)
+
+rtlistSpl <-
+  list.files(path = input_path6,
+             pattern = "*by_trial.csv", full.names = T)
+
+
+library("stringr")
+
+fname <- str_extract(basename(rtlist), "(?<=blast_)\\S{3}")
+fnameSpl <- str_extract(basename(rtlistSpl), "(?<=spoli_)\\S{3}")
+
+
+
+rt_trial <- lapply(rtlist, read.csv)
+rt_trialSpl <- lapply(rtlistSpl, read.csv)
+
+
+for (i in 1:length(rt_trial)) {
+  rt_trial[[i]]$task <-fname[i]
+}
+
+for (i in 1:length(rt_trialSpl)) {
+  rt_trialSpl[[i]]$task <-fnameSpl[i]
+}
+
+
+for (i in 2:length(rt_trial)) {
+  rt_trial[[i]] <- rt_trial[[i]][,-6]
+}
+
+for (i in 2:length(rt_trialSpl)) {
+  rt_trialSpl[[i]] <- rt_trialSpl[[i]][,-6]
+}
+
+
+rt_trial[[1]]$id <- str_extract(rt_trial[[1]]$id, "\\S+(?=_lsl)")
+rt_trialSpl[[1]]$id <- str_extract(rt_trialSpl[[1]]$id, "\\S+(?=_lsl)")
+
+
+# Save TD by trial VSL RT for BOLD Lab
+# vslRTtriaTD <- rt_trial[[4]][which(rt_trial[[4]]$id %in% allData[which(allData$group == "TD"), "part_id"]),]
+#
+# vslRTtriaTD <- vslRTtriaTD[,c(4,5,3)]
+#
+# # write.csv(vslRTtriaTD, "vslRTtriaTD.csv", row.names = F)
+
+rt_trial <- do.call(rbind, rt_trial)
+rt_trialSpl <- do.call(rbind, rt_trialSpl)
+
+rt_trial <- rbind(rt_trial, rt_trialSpl)
+
+rt_trial <- rt_trial[,!names(rt_trial) %in% "X"]
+
+if(length(ssl_rt_outlier) != 0) {
+  rt_trial <-
+  rt_trial[-which(
+    rt_trial$id %in% ssl_rt_outlier &
+      rt_trial$task == "ssl"),]
+}
+
+if(length(tsl_rt_outlier) != 0) {
+  rt_trial <-
+  rt_trial[-which(
+    rt_trial$id %in% tsl_rt_outlier &
+      rt_trial$task == "tsl"),]
+}
+
+if(length(vsl_rt_outlier) != 0) {
+  rt_trial <-
+  rt_trial[-which(
+    rt_trial$id %in% vsl_rt_outlier &
+      rt_trial$task == "vsl"),]
+}
+
+if(length(lsl_rt_outlier) != 0) {
+  rt_trial <-
+  rt_trial[-which(
+    rt_trial$id %in% lsl_rt_outlier &
+      rt_trial$task == "lsl"),]
+}
+
+
+# Spoli_c_097 has invalid key press (error due to jspsych during the experiment adminstartion)
+if(length(which(rt_trial$id %in% "spoli_c_097")) != 0) {
+  rt_trial[which(
+    rt_trial$id %in% "spoli_c_097" & 
+      rt_trial$task == "ssl"),
+    c("reaction_time")] <- NA
+}
+
+
+rt_trial <-
+  merge(rt_trial,
+      allData[,c("part_id", "group", "gender", "age_at_web_month", "age_at_web_year", "a_prime", "gjt_std")],
+      by.x = "id",
+      by.y = "part_id",
+      all.y = T)
+
+
+rt_trial <- rt_trial[which(rt_trial$id %in% allData$part_id),]
+
+setdiff(unique(allData$part_id), unique(rt_trial$id))
+setdiff(unique(rt_trial$id), unique(allData$part_id))
+
+# Outliers are already removed
+rt_trialTD <- rt_trial[which(str_detect(rt_trial$group, "TD")),]
+
+rt_trial <- add_dom_mod_func(rt_trial)
+```
+
+# Compare number of hit trials across groups
+```{r}
+hit_trialN <- 
+  rt_trial %>%
+  subset(., !is.na(reaction_time)) %>%
+  group_by(group, id, task) %>%
+  dplyr::summarise(hit_trial_n = n())
+
+# Count N for each domain and modality
+  rt_trial %>%
+  subset(., !is.na(reaction_time)) %>%
+  group_by(group, task) %>%
+  dplyr::summarise(hit_trial_n = n())
+
+
+hit_trial_mean <-  
+  hit_trialN %>%
+  group_by(group, task) %>%
+  dplyr::summarise(mean_hit_trial = mean(hit_trial_n))
+
+print(hit_trial_mean)
+
+write.csv(hit_trial_mean, "hit_trial_mean.csv")
+
+hit_trialN <- add_dom_mod_func(hit_trialN)
+
+m1_hit_trial <-
+lmer(hit_trial_n ~ group*domain*modality + (0+domain|id) + (0+modality|id), data = hit_trialN,
+       contrasts = list(group = c(-1,1),
+                        domain = c(-1,1),
+                        modality = c(-1,1)))
+
+summary(m1_hit_trial)
+
+hitsASD <- subset(hit_trialN, group == "ASD")
+hitsTD <- subset(hit_trialN, group == "TD")
+
+hit_trialN <- hit_trialN[!colnames(hit_trialN) %in% "group"]
+
+rt_trial <- 
+  merge(rt_trial, hit_trialN[,c("id", "task", "hit_trial_n")], by.x = c("id", "task"), by.y = c("id", "task"), all.x = T)
+
+hitsASD <- hitsASD[!colnames(hitsASD) %in% "group"]
+hitsTD <- hitsTD[!colnames(hitsTD) %in% "group"]
+
+t.test(hitsASD$hit_trial_n, hitsTD$hit_trial_n)
+```
+
+# Normalize RT
+```{r, include = F}
+rt_trial_scaled <- rt_trial
+
+rt_trial_scaled <- rt_trial_scaled[!is.na(rt_trial_scaled$reaction_time),]
+
+for(id in unique(rt_trial_scaled$id)) {
+    #extract each id's individual rt by trial (results same as data summaries; checked)
+    rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "lsl"), "scaled_rt"] <- 
+      scale(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "lsl"),"reaction_time"], center = T)
+    rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "vsl"), "scaled_rt"] <- 
+      scale(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "vsl"),"reaction_time"], center = T)
+    rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "tsl"), "scaled_rt"] <- 
+      scale(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "tsl"),"reaction_time"], center = T)
+    rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "ssl"), "scaled_rt"] <- 
+      scale(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "ssl"),"reaction_time"], center = T)
+}
+
+
+for(id in unique(rt_trial_scaled$id)) {
+    #extract each id's individual rt by trial (results same as data summaries; checked)
+    rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "lsl"), "log_rt"] <- 
+      log(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "lsl"),"reaction_time"] +
+            (2- min(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "lsl"),"reaction_time"], na.rm = T)))
+    rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "vsl"), "log_rt"] <- 
+      log(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "vsl"),"reaction_time"] + 
+            (2- min(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "vsl"),"reaction_time"], na.rm = T)))
+    rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "tsl"), "log_rt"] <- 
+      log(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "tsl"),"reaction_time"] + 
+            (2- min(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "tsl"),"reaction_time"], na.rm = T)))
+    rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "ssl"), "log_rt"] <- 
+      log(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "ssl"),"reaction_time"] + 
+            (2- min(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == "ssl"),"reaction_time"], na.rm = T)))
+}
+
+
+qnormRT <-
+function(id, task) {
+  rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == task),"ranked_rt"] <- 
+    (rank(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == task),"reaction_time"])-0.5) / length(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == task),"reaction_time"])
+  
+  rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == task),"ranked_rt"] <- 
+    as.numeric(as.character(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == task),"ranked_rt"]))
+
+  rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == task),"normed_rankRT"] <- 
+    qnorm(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == task),"ranked_rt"])
+  
+  return(rt_trial_scaled[which(rt_trial_scaled$id == id & rt_trial_scaled$task == task),])
+}
+
+mean_rt <- allData[,c("part_id","lsl_rt", "vsl_rt", "tsl_rt", "ssl_rt")]
+
+mean_rt <- melt(mean_rt, id.vars = ("part_id"))
+
+colnames(mean_rt) <- c("part_id", "task", "mean_rt")
+
+mean_rt$task <- gsub("_rt", "", mean_rt$task)
+
+rt_trial_scaled <- merge(rt_trial_scaled, mean_rt, by.x = c("id", "task"), by.y = c("part_id", "task"), all.x = T)
+
+qnormRTlsl <- list()
+qnormRTtsl <- list()
+qnormRTvsl <- list()
+qnormRTssl <- list()
+index = 0
+
+for(id in unique(rt_trial_scaled$id)) {
+  index <- index + 1
+  qnormRTlsl[[index]]  <- qnormRT(id, "lsl")
+  qnormRTvsl[[index]]  <- qnormRT(id, "vsl")
+  qnormRTssl[[index]]  <- qnormRT(id, "ssl")
+  qnormRTtsl[[index]]  <- qnormRT(id, "tsl")
+}
+
+qnormRTlsl <- do.call(rbind, qnormRTlsl)
+qnormRTvsl <- do.call(rbind, qnormRTvsl)
+qnormRTssl <- do.call(rbind, qnormRTssl)
+qnormRTtsl <- do.call(rbind, qnormRTtsl)
+
+qnormRTall <- rbind(qnormRTlsl, qnormRTvsl)
+qnormRTall <- rbind(qnormRTall, qnormRTssl)
+qnormRTall <- rbind(qnormRTall, qnormRTtsl)
+
+hist(rt_trial_scaled$reaction_time)
+hist(rt_trial_scaled$log_rt)
+hist(rt_trial_scaled$scaled_rt)
+hist(qnormRTall$normed_rankRT)
+
+write.csv(rt_trial_scaled, "/Users/jojohu/Documents/Qlab/manuscript/byTrialRTAll.csv")
+```
+
+
+# By trial RT results in children
+```{r}
+head(rt_trial_scaled)
+
+rt_trial_scaled$reaction_time <- as.numeric(as.character(rt_trial_scaled$reaction_time))
+rt_trial_scaled$id <- as.factor(rt_trial_scaled$id)
+rt_trial_scaled$task <- as.factor(rt_trial_scaled$task)
+rt_trial_scaled$targ_index <- as.numeric(as.character(rt_trial_scaled$targ_index))
+rt_trial_scaled$mean_rt <- as.numeric(as.character(rt_trial_scaled$mean_rt))
+
+
+rt_trial_scaled$task <- 
+  factor(rt_trial_scaled$task,
+         levels = c("lsl", 
+                    "ssl", 
+                    "vsl", 
+                    "tsl"))
+
+rt_trial_scaled$group <- 
+  factor(rt_trial_scaled$group,
+         levels = c("ASD", 
+                    "TD"))
+
+rt_trial_scaled$domain <- 
+  factor(rt_trial_scaled$domain,
+         levels = c("nonling", 
+                    "ling"))
+
+rt_trial_scaled$modality <- 
+  factor(rt_trial_scaled$modality,
+         levels = c("auditory", 
+                    "visual"))
+
+# plot(lmerrt_trial)
+# To Do: plot other residual plots to check model
+rt_trial_scaled %>%
+  group_by(group, task) %>%
+  dplyr::summarise(N = n(), partN = length(unique(id)), cellN = N/partN)
+```
+
+
+# Plot by trial RT
+```{r}
+library(dplyr)
+
+rt_trialPlot <-
+rt_trial_scaled %>% 
+    group_by(group, task, targ_index) %>%
+    dplyr::summarise(scaled_mean_rt = mean(scaled_rt, na.rm=T), sd = sd(scaled_rt, na.rm=T), sum = sum(scaled_rt, na.rm = T),
+                     se=sd(scaled_rt, na.rm=T)/sqrt(sum(!is.na(scaled_rt))), n = sum(!is.na(scaled_rt)))
+
+
+library(ggplot2)
+
+
+plot_byTrialRT <- function(task) {
+  rt_trialPlot[which(rt_trialPlot[,c("task")] == task),] %>%
+    ggplot(aes(x = targ_index, y = scaled_mean_rt)) + 
+    geom_errorbar(aes(ymin = scaled_mean_rt - se, ymax = scaled_mean_rt + se), width = .01, 
+                  color = "grey") +
+     geom_point(aes(color = group), size = 0.01, position = pd,show.legend = FALSE) +
+     geom_line(aes(linetype = group, color = group), position = position_dodge(width = 0.2)) +
+    labs(title = paste("By trial Scaled Mean RT", task),# Change x-axis label
+         y = "Scaled Mean RT (arbitrary unit)") 
+}
+# 
+# plot_byTrialRT("vsl")
+# plot_byTrialRT("lsl")
+# plot_byTrialRT("tsl")
+# plot_byTrialRT("ssl")
+
+plot_indivRT <- function(task) {
+  rt_trial_scaled[which(rt_trial_scaled[,c("task")] == task),] %>%
+                      # & rt_trial_scaled$group == group)
+    ggplot(aes(x = targ_index, y = reaction_time)) +
+    facet_wrap(vars(group)) +
+     geom_point(aes(group = id), size = 0.01, position = pd,show.legend = FALSE) +
+     # geom_line(aes(color = id), position = position_dodge(width = 0.2), alpha = 0.5, show.legend = FALSE)
+     geom_smooth(aes(group = id), method = "lm", se = FALSE, size=0.2) +
+     scale_color_grey()+
+    labs(title = paste(task, "By trial Scaled Mean RT"),# Change x-axis label
+         y = "Scaled Mean RT (arbitrary unit)")
+}
+
+plot_indivRT("lsl")
+ggsave("byTrialRTlsl_scaled.png")
+plot_indivRT("ssl")
+ggsave("byTrialRTssl_scaled.png")
+plot_indivRT("vsl")
+ggsave("byTrialRTvsl_scaled.png")
+plot_indivRT("tsl")
+ggsave("byTrialRTtsl_scaled.png")
+
+```
+
+
+```{r, include = F}
+# hit trials interact with domain and modality and thus may affect raw by trial RT (more hit trials, lower raw RT (e.g., in auditory SL))
+lmerrt_trial_dom <-
+  lmer(reaction_time~group*targ_index*domain*modality  + hit_trial_n + hit_trial_n:domain + hit_trial_n:modality + (0+domain|id) + (0+modality|id) + (1|id),
+       data = rt_trial_scaled,
+       contrasts = list(group = c(-0.5,0.5),
+                        modality = c(-0.5, 0.5),
+                        domain = c(-0.5, 0.5)),
+        control=lmerControl(optimizer = "bobyqa",
+                               check.nobs.vs.nRE="ignore"))
+
+summary(lmerrt_trial_dom)
+```
+
+```{r}
+# Reducing from (1+domain|id) to (0 + domain) +  (1|id) 
+# https://stats.stackexchange.com/questions/13166/rs-lmer-cheat-sheet
+# https://stats.stackexchange.com/questions/242109/model-failed-to-converge-warning-in-lmer
+# No optimizer yields the same results; not overfitting the model is more important
+# Three different intercepts for ID.
+
+lmerrt_scaled_m1 <-
+  lmer(scaled_rt~group*targ_index*domain*modality + (1 | id),
+       data = rt_trial_scaled,
+       contrasts = list(group = c(-0.5,0.5),
+                        modality = c(-0.5, 0.5),
+                        domain = c(-0.5, 0.5))
+      )
+
+summary(lmerrt_scaled_m1)
+
+lmerrt_scaled_m2 <-
+  lmer(log_rt~group*targ_index*domain*modality + (1 + modality + domain | id) + (1|id),
+       data = rt_trial_scaled,
+       contrasts = list(group = c(-0.5,0.5),
+                        modality = c(-0.5, 0.5),
+                        domain = c(-0.5, 0.5)),
+       control=lmerControl(optimizer = "bobyqa"))
+
+summary(lmerrt_scaled_m2)
+
+anova(lmerrt_scaled_m1, lmerrt_scaled_m2)
+
+rt_trial_scaled$scaled_rt_ten <- rt_trial_scaled$scaled_rt * 100
+
+qqnorm(resid(lmerrt_scaled_m1))
+
+plot(resid(lmerrt_scaled_m1), rt_trial_scaled$scaled_rt[!is.na(rt_trial_scaled$scaled_rt)])
+
+scaledRTten_m1 <-
+  lmer(scaled_rt_ten ~ group*targ_index*domain*modality + (1 + domain | id),
+       data = rt_trial_scaled,
+       contrasts = list(group = c(-0.5,0.5),
+                        modality = c(-0.5, 0.5),
+                        domain = c(-0.5, 0.5)),
+       control=lmerControl(optimizer = "bobyqa"))
+
+summary(scaledRTten_m1)
+```
+
+```{r}
+# Using ranked RT:
+lmerrt_m3 <-
+  lmer(normed_rankRT ~ group*targ_index*domain*modality + (1 + modality + domain | id),
+       data = qnormRTall,
+       contrasts = list(group = c(-0.5,0.5),
+                        modality = c(-0.5, 0.5),
+                        domain = c(-0.5, 0.5)))
+
+summary(lmerrt_m3)
+
+# Using original reaction time and controlling for mean reaction time
+lmerrt_m4 <-
+  lmer(reaction_time~group*targ_index*domain*modality + mean_rt + (1 + modality + domain| id),
+       data = rt_trial_scaled,
+       contrasts = list(group = c(-0.5,0.5),
+                        modality = c(-0.5, 0.5),
+                        domain = c(-0.5, 0.5))
+      )
+
+summary(lmerrt_m4)
+```
+
+
+
+
+```{r, include = F, eval = F}
+# Adding hit trials into the model below yielded no significance
+rt_trial_scaled$groupN <- ifelse(rt_trial_scaled$group == "ASD", 0, 1)
+rt_trial_scaled$domainN <- ifelse(rt_trial_scaled$domain == "nonling", 0, 1)
+rt_trial_scaled$modalityN <- ifelse(rt_trial_scaled$modality == "auditory", 0, 1)
+
+
+m2 <-
+  lmer(scaled_rt~groupN*targ_index*domainN*modalityN + (1 + (domainN)|id),
+       data = rt_trial_scaled,
+       # contrasts = list(group = c(-1,1),
+       #                  modality = c(-1, 1),
+       #                  domain = c(-1, 1)),
+       control=lmerControl(optimizer = "bobyqa"))
+summary(m3)
+
+m3 <-
+  lmer(reaction_time~groupN*targ_index*domainN*modalityN + (1|id),
+       data = rt_trial_scaled,
+       # contrasts = list(group = c(-1,1),
+       #                  modality = c(-1, 1),
+       #                  domain = c(-1, 1)),
+       control=lmerControl(optimizer = "bobyqa", optCtrl=list(maxfun=1e9)))
+
+summary(m3)
+
+all_fit(lmerrt_trial_dom_scaled)
+
+all_fit(m2)
+
+all_fit(m3)
+
+print(lmerrt_trial_dom_scaled, correlation=TRUE)
+
+
+logRT_m1 <-
+  lmer(log_rt~group*targ_index*domain*modality + (1 + modality*domain | id),
+       data = rt_trial_scaled,
+       contrasts = list(group = c(-0.5,0.5),
+                        modality = c(-0.5, 0.5),
+                        domain = c(-0.5, 0.5)),
+       control=lmerControl(optimizer = "bobyqa"))
+
+summary(logRT_m1)
+```
+
+```{r}
+library(afex)
+# all_fit(lmerrt_trial_dom_scaled)
+
+
+rt_trial_scaledLING <- rt_trial_scaled[which(rt_trial_scaled$domain == "ling"),]
+rt_trial_scaledNonling <- rt_trial_scaled[which(rt_trial_scaled$domain == "nonling"),]
+
+# Break down 4 way interaction group1:targ_index:domain1:modality1
+
+lmer_slopeLING <-
+  lmer(scaled_rt~group*targ_index*modality + (0+modality|id) + (1|id),
+       data = rt_trial_scaledLING,
+       contrasts = list(group = c(-1,1),
+                        modality = c(-1, 1)),
+       control=lmerControl(optimizer = "bobyqa"))
+
+summary(lmer_slopeLING)
+
+lmer_slopeNonling <-
+  lmer(scaled_rt~group*targ_index*modality + (0+modality|id) + (1|id),
+       data = rt_trial_scaledNonling,
+       contrasts = list(group = c(-1,1),
+                        modality = c(-1, 1)),
+       control=lmerControl(optimizer = "bobyqa"))
+
+summary(lmer_slopeNonling)
+```
+
+
+```{r}
+library(afex)
+# all_fit(lmerrt_trial_dom_scaled)
+
+
+rt_trial_scaledVisual <- rt_trial_scaled[which(rt_trial_scaled$modality == "visual"),]
+rt_trial_scaledAuditory <- rt_trial_scaled[which(rt_trial_scaled$modality == "auditory"),]
+
+# Break down 4 way interaction group1:targ_index:domain1:modality1
+
+lmer_slopeVisual <-
+  lmer(scaled_rt~group*targ_index*domain +  (0+domain|id) + (1|id),
+       data = rt_trial_scaledVisual,
+       contrasts = list(group = c(-1,1),
+                        domain = c(-1, 1)),
+       control=lmerControl(optimizer = "bobyqa"))
+
+summary(lmer_slopeVisual)
+
+lmer_slopeAuditory <-
+  lmer(scaled_rt~group*targ_index*domain + (0+domain|id) + (1|id),
+       data = rt_trial_scaledAuditory,
+       contrasts = list(group = c(-1,1),
+                        domain = c(-1, 1)),
+       control=lmerControl(optimizer = "bobyqa"))
+
+summary(lmer_slopeAuditory)
+```
+
+
+```{r, include = F}
+# Check whether hit trials interact with group or task
+lmerrt_trial <-
+  lmer(scaled_rt~group*targ_index*task + hit_trial_n:group + hit_trial_n + (0+task|id) + (1|id), 
+       data = rt_trial_scaled,
+       contrasts = list(group = c(-1,1)))
+
+summary(lmerrt_trial)
+```
+
+
+
+# Post-hoc analysis of RT slope
+# Why does the ASD group have specific weakness in Linguistic Tasks?
+# Check Composite SL Score differences in ASD between below age and at age language groups
+```{r}
+asd_composite <- asd_sl
+
+asd_composite[, c("lsl_slopeScaled", "ssl_slopeScaled","vsl_slopeScaled", "tsl_slopeScaled")] <-
+  lapply(asd_composite[, c("lsl_slope", "ssl_slope","vsl_slope", "tsl_slope")], 
+         function(x) {
+           scale(0 -x)
+           })
+
+asd_composite[, c("lsl_accScaled", "ssl_accScaled","vsl_accScaled", "tsl_accScaled")] <-
+  lapply(asd_composite[, c("lsl_acc", "ssl_acc","vsl_acc", "tsl_acc")], 
+         function(x) {
+           scale(x)
+           })
+
+# When composite score only includes the SL tasks, no significance was found in any of the analyses
+
+sumComposite <- function(taskCol, nCol, column_list) {
+  asd_composite[,taskCol] <-
+  rowSums(asd_composite[, column_list], na.rm = T)
+  
+  asd_composite[,nCol] <-
+  apply(asd_composite[column_list], 1, function(x) {
+                              sum(!is.na(x)) })
+  
+   asd_composite[,taskCol] <- asd_composite[,taskCol]/ asd_composite[,nCol] 
+  
+  return(asd_composite)
+}
+
+asd_composite <-
+  sumComposite("composite_ling", "completeN_ling", 
+               c("lsl_accScaled", "ssl_accScaled", 
+                 "lsl_slopeScaled", "ssl_slopeScaled"))
+
+asd_composite <-
+  sumComposite("composite_nonling", "completeN_nonling", 
+               c("vsl_accScaled", "tsl_accScaled", 
+                 "vsl_slopeScaled", "tsl_slopeScaled"))
+
+
+asd_composite <-
+  sumComposite("composite_ssl", "completeN_ssl", 
+               c("ssl_accScaled", "ssl_slopeScaled"))
+
+asd_composite <-
+  sumComposite("composite_tsl", "completeN_tsl", 
+               c("tsl_accScaled", "tsl_slopeScaled"))
+
+
+asd_composite <-
+  sumComposite("composite_vsl", "completeN_vsl", 
+               c("vsl_accScaled", "vsl_slopeScaled"))
+
+asd_composite <-
+  sumComposite("composite_lsl", "completeN_lsl", 
+               c("lsl_accScaled", "lsl_slopeScaled"))
+```
+
+```{r}
+library("plyr")
+
+asd_composite$language_age_level <-
+revalue(asd_composite$language_age_level, c("signif_below_age"="below_age",
+                                     "slight_below_age"="below_age",
+                                     "at_age"="at_age",
+                                     "above_age"="at_age"))
+detach(package:plyr)
+
+# asd_composite$language_age_level <- as.character(asd_composite$language_age_level)
+# asd_composite[which(asd_composite$group == "TD"), "language_age_level"] <- "TD"
+
+asd_composite$language_age_level <- as.factor(asd_composite$language_age_level)
+
+asd_composite$language_age_level <- 
+  factor(asd_composite$language_age_level,
+         levels = c("below_age", 
+                    "at_age"
+                    # "TD"
+                    ))
+
+# Check Linguistic RT slope differences in ASD between below age and at age language groups using ancova
+# asd_composite <- asd_composite[which(!is.na(asd_composite$language_age_level) &
+#                                        !is.na(asd_composite$composite_ling)),]
+# asd_composite <- asd_composite[which(!is.na(asd_composite$scq_web)),]
+# asd_composite <- asd_composite[which(!is.na(asd_composite$rbs_r)),]
+
+nrow(asd_composite[which(!is.na(asd_composite$a_prime) & !is.na(asd_composite$composite_ling)),])
+
+compositeASD_m1 <- lm(composite_ling ~ a_prime + age_at_web_month,
+                 # contrasts = list(modality = c(-0.5,0.5)),
+               data = asd_composite)
+
+summary(compositeASD_m1)
+
+# a stronger correlation between nonlinguistic composite score and a_prime is found
+compositeASD_m2 <- lm(composite_nonling ~ a_prime + age_at_web_month,
+                 # contrasts = list(modality = c(-0.5,0.5)),
+               data = asd_composite)
+
+summary(compositeASD_m2)
+
+
+
+# T.test of the composite SL scores indivudial tasks did not reach significance
+t.test(asd_composite[which(asd_composite$language_age_level == "below_age"),"composite_ling"],
+       asd_composite[which(asd_composite$language_age_level == "at_age"),"composite_ling"])
+
+# library(ez)
+# 
+# ezANOVA(data=asd_composite, wid=part_id, dv=composite_ling, between = language_age_level,
+#         type=3, detailed=TRUE)
+
+
+# ezANOVA(data=asd_composite, wid=part_id, dv=composite, between = language_age_level,
+#         between_covariates = c("age_at_web_year"),
+#         type=3, detailed=TRUE)
+```
+
+
+# Multiple Regression for GJT and Composite Score
+```{r}
+# Regenerate a long data frame with GJT and scaled accuracy scores
+gjt_mulreg <- asd_composite[,c("part_id", "group", "age_at_web_month", "age_at_web_year", "a_prime",
+                               "scq_web", "rbs_r", "composite_ling", "composite_nonling")]
+gjt_mulreg <- 
+  melt(gjt_mulreg, id.vars= c("part_id", "group", "age_at_web_month", "age_at_web_year", "a_prime",
+                               "scq_web", "rbs_r"))
+
+colnames(gjt_mulreg)[which(colnames(gjt_mulreg) == "variable")] <- "domain"
+colnames(gjt_mulreg)[which(colnames(gjt_mulreg) == "value")] <- "composite_score"
+
+gjt_mulreg$domain <- as.factor(gjt_mulreg$domain)
+# gjt_mulreg$modality <- as.factor(gjt_mulreg$modality)
+
+
+m1_gjt <- 
+  lmer(composite_score ~ domain*a_prime + age_at_web_month  + (1 | part_id), data= gjt_mulreg,
+       contrasts = list(domain = c(-0.5, 0.5)),
+          control=lmerControl(optimizer = "bobyqa",
+                              check.nobs.vs.nRE="ignore", optCtrl=list(maxfun=2e5)))
+
+summary(m1_gjt)
+
+m2_gjt <- lm(composite_score ~ domain*a_prime + age_at_web_month, data = gjt_mulreg,
+             contrasts = list(domain = c(-0.5, 0.5)),)
+summary(m2_gjt)
+
+
+```
+
+
+```{r}
+# Correlation matrix between ASD Lingusitic rt slope, composite and SCQ, RBS-R, Age
+library("RcmdrMisc")
+
+
+asd_corr_posthoc <-
+  rcorr.adjust(as.matrix(asd_composite[which(asd_composite$group == "ASD"),
+                                       c("composite_ling",
+                                         "composite_nonling",
+                                         "a_prime",
+                                     "rbs_r",
+                                     "scq_web",
+                                     "lsl_slope",
+                                     "ssl_slope",
+                                     "lsl_acc",
+                                     "ssl_acc",
+                                      "tsl_slope",
+                                     "vsl_slope",
+                                     "tsl_acc",
+                                     "vsl_acc",
+                                     "age_at_web_month"
+                                     )]),
+      use=c("pairwise.complete.obs"))
+
+
+flattenCorrMatrix <- function(cormat, pmat, nmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor  = (cormat)[ut],
+    p = pmat[ut],
+    n = nmat[ut]
+  )
+}
+
+asd_corr_posthoc <-
+  flattenCorrMatrix(data.frame(asd_corr_posthoc$R[1]),
+                  data.frame(asd_corr_posthoc$R[3]),
+                  data.frame(asd_corr_posthoc$R[2]))
+
+
+                  
+aprime_corr <- 
+  asd_corr_posthoc[which(asd_corr_posthoc$row == "a_prime" | asd_corr_posthoc$column == "a_prime"),]
+
+write.csv(asd_corr_posthoc, "asd_corr_posthoc_uncorrected.csv")
+write.csv(aprime_corr, "aprime_corr.csv")
+```
+
+
+
+```{r}
+# Check Linguistic RT slope differences in ASD between below age and at age language groups
+rtASD <- asd_composite[which(asd_composite$group == "ASD"),
+                    c("part_id", "group", 
+                   # "lsl_acc","ssl_acc",
+                    # "vsl_acc","tsl_acc",
+                   "lsl_slope", "ssl_slope", 
+                   # "tsl_slope", "vsl_slope",
+                   "age_at_web_month", "age_at_web_year", "language_age_level",
+                   "a_prime", "gjt_std", "scq_web", "rbs_r")]
+
+# T.test of the accuracy or slope of indivudial tasks did not reach significance
+t.test(rtASD[which(rtASD$language_age_level == "below_age"),"lsl_slope"],
+       rtASD[which(rtASD$language_age_level == "at_age"),"lsl_slope"])
+
+t.test(rtASD[which(rtASD$language_age_level == "below_age"),"ssl_slope"],
+       rtASD[which(rtASD$language_age_level == "at_age"),"ssl_slope"])
+
+# rtASD <- rtASD[which(!is.na(rtASD$lsl_slope) & !is.na(rtASD$ssl_slope)),]
+
+rtASDlong <- melt(rtASD, id.vars = c("part_id", "group", "age_at_web_month", "age_at_web_year", 
+                        "language_age_level", "a_prime", "gjt_std", "scq_web", "rbs_r"))
+
+
+colnames(rtASDlong)[which(colnames(rtASDlong) == "variable")] <- "task"
+rtASDlong$task <- gsub("_slope", "", rtASDlong$task)
+colnames(rtASDlong)[which(colnames(rtASDlong) == "value")] <- "rt_slope"
+
+rtASDlong <- add_dom_mod_func(rtASDlong)
+
+rtASD_ling <- rtASDlong[which(rtASDlong$domain == "ling"),]
+
+# Check Linguistic RT slope differences in ASD between below age and at age language groups using linear regression
+rtASD_m1 <- lm(rt_slope ~ a_prime,
+                 # contrasts = list(modality = c(-0.5,0.5)),
+               data = rtASD_ling)
+
+summary(rtASD_m1)
+
+# T.test of RT slope of the linguistic tasks did not reach significance
+t.test(rtASD_ling[which(rtASD_ling$language_age_level == "below_age"),"rt_slope"],
+       rtASD_ling[which(rtASD_ling$language_age_level == "at_age"),"rt_slope"])
+
+
+# library(ez)
+# # Check Linguistic RT slope differences in ASD between below age and at age language groups using ancova
+# rtASD_ling <- rtASD_ling[which(!is.na(rtASD_ling$language_age_level)),]
+# # rtASD_ling <- rtASD_ling[which(!is.na(rtASD_ling$scq_web)),]
+# # rtASD_ling <- rtASD_ling[which(!is.na(rtASD_ling$rbs_r)),]
+# 
+# ezANOVA(data=rtASD_ling, wid=part_id, dv=rt_slope, between = language_age_level, 
+#         between_covariates = c("age_at_web_month"),
+#         type=3, detailed=TRUE)
+```
+
+
+
+```{r}
+# Plot by language level in ASD
+slopeByLang <- merge(allData_slope, allData[,c("part_id", "language_age_level")], all.x = T)
+
+slopeByLang[which(slopeByLang$language_age_level == "slight_below_age" | 
+        slopeByLang$language_age_level == "signif_below_age"), "Group"] <- "Delayed Language ASD"
+
+slopeByLang[which(slopeByLang$language_age_level == "above_age" | 
+        slopeByLang$language_age_level == "at_age"), "Group"] <- "Typical Language ASD"
+
+slopeByLang[which(slopeByLang$group == "TD"), "Group"] <- "TD"
+
+# LSL and SSL tasks by itself looks similar 
+slopeByLang <- slopeByLang[which(slopeByLang$domain == "ling"), ]
+
+slopeByLang %>%
+  ggplot(aes(x = Group, y = rt_slope,fill = Group)) +
+  geom_bar(position = position_dodge(),
+           width = 0.9,
+           stat = "summary", fun.y = "mean") +
+   labs(title = "Lingustic SL RT Slope  Split by Language in ASD",
+        x = "Age Group",  # Change x-axis label
+         y = "Lingustic SL RT Slope (arbitrary unit/ trial)") +
+  # scale_fill_manual(values = c("#F8766d", "#00BFC4", "#00BFC4")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold"),
+        legend.title=element_text(size=15, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),         # Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) + 
+  geom_beeswarm(
+    aes(fill = Group),
+    dodge.width = 1,
+    cex = 2.5,
+    size = 0.8,
+    show.legend = FALSE,
+    shape = 1
+  )
+
+ggsave("asd_split_by_lang.png", width = 10,
+       dpi = 150)
+```
+
+
+
+# Prep Plotting
+```{r}
+#allData <- allData[,-c(1)]
+bar_all <-  allData[,c(which(str_detect(colnames(allData), 
+                                          "part_id|group|ssl|lsl|vsl|tsl")))]
+```
+
+
+# Accuracy Line Plot (no outliers)
+# SL Accuracy Descriptive Stat
+```{r}
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(data.table)
+
+library("pastecs")
+
+stat_desc <- 
+function(df,group,task) {
+  stat.desc(df[which(df$group == group & df$variable == task),])
+}
+
+bar_all_long <- melt(bar_all, id.vars=c("part_id", "group"))
+
+bar_acc <-
+  bar_all_long[which(str_detect(
+    bar_all_long$variable, "\\S{1}(?=sl_acc)")),]
+
+library("data.table")
+
+bar_acc$variable <-
+revalue(bar_acc$variable, c("lsl_acc"="Letter",
+                                     "vsl_acc"="Image",
+                                     "tsl_acc"="Tone",
+                                     "ssl_acc"="Syllable"))
+
+bar_acc$variable <- 
+  factor(bar_acc$variable,levels = c("Image", 
+                                              "Letter", 
+                                              "Tone", 
+                                              "Syllable"))
+
+bar_acc <-
+  bar_acc[order(bar_acc$variable), ]
+
+bar_acc$value <- 
+  as.numeric(as.character(bar_acc$value))
+
+
+td_tone <- stat_desc(bar_acc, "TD", "Tone")
+td_syllable <- stat_desc(bar_acc, "TD", "Syllable")
+td_image <- stat_desc(bar_acc, "TD", "Image")
+td_letter <- stat_desc(bar_acc, "TD", "Letter")
+asd_tone <- stat_desc(bar_acc, "ASD", "Tone")
+asd_syllable <- stat_desc(bar_acc, "ASD", "Syllable")
+asd_image <- stat_desc(bar_acc, "ASD", "Image")
+asd_letter <- stat_desc(bar_acc, "ASD", "Letter") 
+
+extract_line_graph_stat <- function (x, group, task) {
+y <- x[c("nbr.val","mean", "SE.mean", "std.dev", "CI.mean"),"value"]
+dim(y) <- c(5, 1)
+y <- t(y)
+colnames(y) <- c("n", "mean", "std_error", "sd", "ci")
+y <- data.frame(y)
+y$ci_upper <- y$mean + y$ci 
+y$ci_lower <- y$mean - y$ci 
+y$group <- group
+y$task <- task
+
+return(y)
+}
+
+td_tone_stat <- extract_line_graph_stat(td_tone, "TD", "Tone")
+td_syllable_stat <- extract_line_graph_stat(td_syllable, "TD", "Syllable")
+td_image_stat <- extract_line_graph_stat(td_image, "TD", "Image")
+td_letter_stat <- extract_line_graph_stat(td_letter, "TD", "Letter")
+
+asd_tone_stat <- extract_line_graph_stat(asd_tone, "ASD", "Tone")
+asd_syllable_stat <- extract_line_graph_stat(asd_syllable, "ASD", "Syllable")
+asd_image_stat <- extract_line_graph_stat(asd_image, "ASD", "Image")
+asd_letter_stat <- extract_line_graph_stat(asd_letter, "ASD", "Letter")
+
+
+acc_stat <- rbind(td_tone_stat, td_syllable_stat, td_image_stat, td_letter_stat, 
+                  asd_tone_stat, asd_syllable_stat, asd_image_stat, asd_letter_stat)
+
+colnames(acc_stat)[colnames(acc_stat) == "group"] <- "Group"
+
+acc_stat$task <- 
+  factor(acc_stat$task,levels = c("Image", 
+                                              "Letter", 
+                                              "Tone", 
+                                              "Syllable"))
+
+acc_stat <-
+  acc_stat[order(acc_stat$task), ]
+
+cast(acc_stat, task~Group, value = "mean")
+cast(acc_stat, task~Group, value = "ci_lower")
+cast(acc_stat, task~Group, value = "ci_upper")
+
+library(reshape)
+acc_stat_descrip <- acc_stat[,c("Group", "task", "mean", "sd")]
+acc_stat_mean <- cast(acc_stat_descrip, task~Group, value = "mean")
+acc_stat_sd <- cast(acc_stat_descrip, task~Group, value = "sd")
+acc_stat_across_sd <- cbind(acc_stat_mean, acc_stat_sd)
+acc_stat_across_sd[,c(2:3, 5:6)] <- round(acc_stat_across_sd[,c(2:3, 5:6)], 2)
+
+# write.csv(acc_stat_across_sd, "srcd_figure/acc_stat.csv")
+
+
+```
+
+
+# SL Accuracy within subject error 
+```{r, include = F}
+summarySEwithin <- function(data=NULL, measurevar, betweenvars=NULL, withinvars=NULL,
+                            idvar=NULL, na.rm=FALSE, conf.interval=.95, .drop=TRUE) {
+
+  # Ensure that the betweenvars and withinvars are factors
+  factorvars <- vapply(data[, c(betweenvars, withinvars), drop=FALSE],
+    FUN=is.factor, FUN.VALUE=logical(1))
+
+  if (!all(factorvars)) {
+    nonfactorvars <- names(factorvars)[!factorvars]
+    message("Automatically converting the following non-factors to factors: ",
+            paste(nonfactorvars, collapse = ", "))
+    data[nonfactorvars] <- lapply(data[nonfactorvars], factor)
+  }
+
+  # Get the means from the un-normed data
+  datac <- summarySE(data, measurevar, groupvars=c(betweenvars, withinvars),
+                     na.rm=na.rm, conf.interval=conf.interval, .drop=.drop)
+
+  # Drop all the unused columns (these will be calculated with normed data)
+  datac$sd <- NULL
+  datac$se <- NULL
+  datac$ci <- NULL
+
+  # Norm each subject's data
+  ndata <- normDataWithin(data, idvar, measurevar, betweenvars, na.rm, .drop=.drop)
+
+  # This is the name of the new column
+  measurevar_n <- paste(measurevar, "_norm", sep="")
+
+  # Collapse the normed data - now we can treat between and within vars the same
+  ndatac <- summarySE(ndata, measurevar_n, groupvars=c(betweenvars, withinvars),
+                      na.rm=na.rm, conf.interval=conf.interval, .drop=.drop)
+
+  # Apply correction from Morey (2008) to the standard error and confidence interval
+  #  Get the product of the number of conditions of within-S variables
+  nWithinGroups    <- prod(vapply(ndatac[,withinvars, drop=FALSE], FUN=nlevels,
+                           FUN.VALUE=numeric(1)))
+  correctionFactor <- sqrt( nWithinGroups / (nWithinGroups-1) )
+
+  # Apply the correction factor
+  ndatac$sd <- ndatac$sd * correctionFactor
+  ndatac$se <- ndatac$se * correctionFactor
+  ndatac$ci <- ndatac$ci * correctionFactor
+
+  # Combine the un-normed means with the normed results
+  merge(datac, ndatac)
+}
+
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
+                      conf.interval=.95, .drop=TRUE) {
+    library(plyr)
+
+    # New version of length which can handle NA's: if na.rm==T, don't count them
+    length2 <- function (x, na.rm=FALSE) {
+        if (na.rm) sum(!is.na(x))
+        else       length(x)
+    }
+
+    # This does the summary. For each group's data frame, return a vector with
+    # N, mean, and sd
+    datac <- ddply(data, groupvars, .drop=.drop,
+      .fun = function(xx, col) {
+        c(N    = length2(xx[[col]], na.rm=na.rm),
+          mean = mean   (xx[[col]], na.rm=na.rm),
+          sd   = sd     (xx[[col]], na.rm=na.rm)
+        )
+      },
+      measurevar
+    )
+
+    # Rename the "mean" column    
+    datac <- rename(datac, c("mean" = measurevar))
+
+    datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+
+    # Confidence interval multiplier for standard error
+    # Calculate t-statistic for confidence interval: 
+    # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+    ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+    datac$ci <- datac$se * ciMult
+
+    return(datac)
+}
+
+normDataWithin <- function(data=NULL, idvar, measurevar, betweenvars=NULL,
+                           na.rm=FALSE, .drop=TRUE) {
+    library(plyr)
+
+    # Measure var on left, idvar + between vars on right of formula.
+    data.subjMean <- ddply(data, c(idvar, betweenvars), .drop=.drop,
+     .fun = function(xx, col, na.rm) {
+        c(subjMean = mean(xx[,col], na.rm=na.rm))
+      },
+      measurevar,
+      na.rm
+    )
+
+    # Put the subject means with original data
+    data <- merge(data, data.subjMean)
+
+    # Get the normalized data in a new column
+    measureNormedVar <- paste(measurevar, "_norm", sep="")
+    data[,measureNormedVar] <- data[,measurevar] - data[,"subjMean"] +
+                               mean(data[,measurevar], na.rm=na.rm)
+
+    # Remove this subject mean column
+    data$subjMean <- NULL
+
+    return(data)
+}
+```
+
+```{r}
+detach(package:plyr)
+
+acc_within_stat <- summarySEwithin(bar_acc, measurevar="value", betweenvars = "group",
+                                   withinvars="variable", idvar="part_id", na.rm=T, conf.interval=.95)
+
+
+colnames(acc_within_stat)[colnames(acc_within_stat) == "group"] <- "Group"
+
+
+
+acc_within_stat$variable <- 
+  factor(acc_within_stat$variable,levels = c("Image", 
+                                              "Letter", 
+                                              "Tone", 
+                                              "Syllable"))
+```
+
+```{r}
+
+pd <- position_dodge(width = 0.2)
+
+
+acc_within_stat %>%
+  ggplot(aes(x = variable, y = value, group = Group)) +
+  geom_line(aes(linetype = Group, color = Group), position = pd, size = 1.8) +
+   geom_errorbar(aes(ymin = value - se, ymax = value + se), width = .1, position = pd) +
+     geom_point(aes(color = Group), size = 4, position = pd,show.legend = FALSE) + 
+          geom_point(size = 3, color = "white", position = pd) +
+      labs(title = "SL Accuracy against Chance-level",
+         x = "SL Task",  # Change x-axis label
+         y = "Mean Accuracy (%)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold"),
+        legend.title=element_text(size=15, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),         # Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_hline(yintercept=0.5, color = "grey") +
+  geom_text(aes(x= 1, y = 0.505, label = paste0("chance", "-level")), size=5) +
+   geom_text(aes(x= 1.05, y = 0.7, label = paste0("***")), size=7, color="#00BFC4") +
+  geom_text(aes(x= 2.05, y = 0.7, label = paste0("***")), size=7, color="#00BFC4") +
+  geom_text(aes(x= 3.05, y = 0.7, label = paste0("**")), size=7, color="#00BFC4") +
+  geom_text(aes(x= 4.05, y = 0.7, label = paste0("**")), size=7, color="#00BFC4") +
+  # geom_text(aes(x= 4.05, y = 0.7, label = paste0("†")), size=7, color="#00BFC4") +
+  geom_text(aes(x= 0.95, y = 0.51, label = paste0("*")), size=7, color="#F8766d") +
+  geom_text(aes(x= 1.95, y = 0.51, label = paste0("†")), size=7, color="#F8766d") +
+   geom_text(aes(x= 2.95, y = 0.51, label = paste0("**")), size=7, color="#F8766d") +
+  geom_text(aes(x= 3.95, y = 0.494, label = paste0("*")), size=7, color="#F8766d") 
+
+ggsave("/Users/jojohu/Documents/Qlab/manuscript/behavioral_acc_across_group.png",
+       bg="transparent",width = 15, height = 15, units = "cm")
+```
+
+
+
+# Accuracy Bar Plot in Linguistics Task
+```{r, include = F}
+
+pd <- position_dodge(width = 0.2)
+
+library(ggbeeswarm)
+acc_bar <- bar_acc 
+colnames(acc_bar)[colnames(acc_bar) == "group"] <- "Group"
+acc_bar[which(acc_bar$variable == "Letter" | acc_bar$variable == "Syllable"),] %>%
+  ggplot(aes(x = variable, y = value)) +
+  geom_bar(
+    aes(fill = Group),
+    position = position_dodge(),
+    width = 0.9,
+    stat = "summary",
+    fun.y = "mean",
+  ) +
+ labs(title = "Behavioral Accuracy in Linguistic SL",
+         x = "SL Task",  # Change x-axis label
+         y = "Mean Accuracy") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold"),
+        legend.title=element_text(size=15, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),         # Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) + 
+  geom_beeswarm(
+    aes(fill = Group),
+    dodge.width = 1,
+    cex = 2.5,
+    size = 0.8,
+    show.legend = FALSE,
+    shape=1
+  ) + 
+  geom_text(aes(x= 1, y = 1.04, label = paste0("**")), size=7) +
+  geom_segment(aes(x=0.75,xend=1.25, y = 1.02, yend = 1.02)) +
+  geom_segment(aes(x=0.75,xend=0.75, yend = 1, y = 1.02)) +
+  geom_segment(aes(x=1.25,xend=1.25, yend = 1, y = 1.02)) +
+  geom_text(aes(x= 2, y = 1.06, label = paste0("†")), size=7) +
+  geom_segment(aes(x=1.75,xend=2.25, y = 1.02, yend = 1.02)) +
+  geom_segment(aes(x=1.75,xend=1.75, yend = 1, y = 1.02)) +
+  geom_segment(aes(x=2.25,xend=2.25, yend = 1, y = 1.02))
+
+```
+
+
+
+```{r}
+library(ggbeeswarm)
+acc_bar <- bar_acc 
+colnames(acc_bar)[colnames(acc_bar) == "group"] <- "Group"
+acc_bar %>%
+  ggplot(aes(x = variable, y = value)) +
+  geom_bar(
+    aes(fill = Group),
+    position = position_dodge(),
+    width = 0.9,
+    stat = "summary",
+    fun.y = "mean",
+  ) +
+ labs(title = "SL Accuracy Between Group Comparison",
+         x = "SL Task",  # Change x-axis label
+         y = "Mean Accuracy") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold"),
+        legend.title=element_text(size=15, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),         # Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) + 
+  geom_beeswarm(
+    aes(fill = Group),
+    dodge.width = 1,
+    cex = 2.5,
+    size = 0.8,
+    show.legend = FALSE,
+    shape = 1
+  ) + 
+  # geom_text(aes(x= 1, y = 1.04, label = paste0("†")), size=7) +
+  # geom_segment(aes(x=0.75,xend=1.25, y = 1.02, yend = 1.02)) +
+  # geom_segment(aes(x=0.75,xend=0.75, yend = 1, y = 1.02)) +
+  # geom_segment(aes(x=1.25,xend=1.25, yend = 1, y = 1.02)) +
+  # geom_text(aes(x= 2, y = 1.06, label = paste0("*")), size=7) +
+  geom_segment(aes(x=1.75,xend=2.25, y = 1.02, yend = 1.02)) +
+  geom_segment(aes(x=1.75,xend=1.75, yend = 1, y = 1.02)) +
+  geom_segment(aes(x=2.25,xend=2.25, yend = 1, y = 1.02)) +
+   geom_segment(aes(x=0.75,xend=1.25, y = 1.02, yend = 1.02)) +
+  geom_segment(aes(x=0.75,xend=0.75, yend = 1, y = 1.02)) +
+  geom_segment(aes(x=1.25,xend=1.25, yend = 1, y = 1.02)) +
+  geom_text(aes(x= 1, y = 1.06, label = paste0("†")), size=7) +
+  geom_text(aes(x= 2, y = 1.06, label = paste0("†")), size=7) +
+  # geom_segment(aes(x=2.75,xend=3.25, y = 1.02, yend = 1.02)) +
+  # geom_segment(aes(x=2.75,xend=2.75, yend = 1, y = 1.02)) +
+  # geom_segment(aes(x=2.25,xend=2.25, yend = 1, y = 1.02)) +
+   geom_text(aes(x= 4, y = 1.06, label = paste0("*")), size=7) +
+  geom_segment(aes(x=3.75,xend=4.25, y = 1.02, yend = 1.02)) +
+  geom_segment(aes(x=3.75,xend=3.75, yend = 1, y = 1.02)) +
+  geom_segment(aes(x=4.25,xend=4.25, yend = 1, y = 1.02)) 
+
+# ggsave("srcd_figure/behavioral_acc_ling_bar.png",
+       # bg="transparent",
+       # # ggsave = 15, height = 15, units = "cm")
+```
+
+
+
+# Mean RT Line Plot (no outliers)
+```{r}
+library(dplyr)
+library(ggplot2)
+
+bar_all_long <- melt(bar_all, id.vars=c("part_id", "group"))
+
+
+bar_rt <-
+  bar_all_long[which(
+    str_detect(bar_all_long$variable, "\\S{3}(_rt)")),]
+
+bar_rt$variable <-
+revalue(bar_rt$variable, c("lsl_rt"="Letter",
+                                     "vsl_rt"="Image",
+                                     "tsl_rt"="Tone",
+                                     "ssl_rt"="Syllable"))
+
+bar_rt$variable <- 
+  factor(bar_rt$variable,levels = c("Image", 
+                                                  "Letter", 
+                                                  "Tone", 
+                                                  "Syllable"))
+
+bar_rt <-
+  bar_rt[order(bar_rt$variable), ]
+
+bar_rt$value <- 
+  as.numeric(as.character(bar_rt$value))
+
+
+library("pastecs")
+stat_desc <- 
+function(df,group,task) {
+  stat.desc(df[which(df$group == group & df$variable == task),])
+}
+
+td_tone <- stat_desc(bar_rt, "TD", "Tone")
+td_syllable <- stat_desc(bar_rt, "TD", "Syllable")
+td_image <- stat_desc(bar_rt, "TD", "Image")
+td_letter <- stat_desc(bar_rt, "TD", "Letter")
+
+asd_tone <- stat_desc(bar_rt, "ASD", "Tone")
+asd_syllable <- stat_desc(bar_rt, "ASD", "Syllable")
+asd_image <- stat_desc(bar_rt, "ASD", "Image")
+asd_letter <- stat_desc(bar_rt, "ASD", "Letter")
+ 
+td_tone_stat <- extract_line_graph_stat(td_tone, "TD", "Tone")
+td_syllable_stat <- extract_line_graph_stat(td_syllable, "TD", "Syllable")
+td_image_stat <- extract_line_graph_stat(td_image, "TD", "Image")
+td_letter_stat <- extract_line_graph_stat(td_letter, "TD", "Letter")
+
+asd_tone_stat <- extract_line_graph_stat(asd_tone, "ASD", "Tone")
+asd_syllable_stat <- extract_line_graph_stat(asd_syllable, "ASD", "Syllable")
+asd_image_stat <- extract_line_graph_stat(asd_image, "ASD", "Image")
+asd_letter_stat <- extract_line_graph_stat(asd_letter, "ASD", "Letter")
+
+
+
+rt_stat <- rbind(td_tone_stat, td_syllable_stat, td_image_stat, td_letter_stat,
+                      asd_tone_stat, asd_syllable_stat, asd_image_stat, asd_letter_stat)
+
+
+colnames(rt_stat)[colnames(rt_stat) == "group"] <- "Group"
+
+rt_stat$task <- 
+  factor(rt_stat$task,levels = c("Image", 
+                                              "Letter", 
+                                              "Tone", 
+                                              "Syllable"))
+
+rt_stat <-
+  rt_stat[order(rt_stat$task), ]
+
+
+pd <- position_dodge(width = 0.2)
+
+rt_stat %>%
+  ggplot(aes(x = task, y = mean, group = Group)) +
+  geom_line(aes(linetype = Group, color = Group), position = pd, size = 1.8) +
+   geom_errorbar(aes(ymin = mean - std_error, ymax = mean + std_error), width = .1, position = pd) +
+     geom_point(aes(color = Group), size = 4, position = pd,show.legend = FALSE) + 
+          geom_point(size = 3, color = "white", position = pd) +
+      labs(title = "Behavioral Reaction Time across Groups",
+         x = "SL Task",  # Change x-axis label
+         y = "Mean Reaction Time (ms)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold"),
+        legend.title=element_text(size=15, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),         # Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  )
+
+# ggsave("behavioral_rt_across_group.png",
+       # width = 15, height = 15, units = "cm")
+
+# write.csv(blast_spoli_data_wide, "blast_spoli_data_all_measures.csv")
+# write.csv(allData, "blast_spoli_data_all_measures_no_outlier.csv")
+```
+
+
+
+# RT Slope Line Plot (no outliers)
+```{r, include = F}
+library(dplyr)
+library(ggplot2)
+
+bar_all_long <- melt(bar_all, id.vars=c("part_id", "group"))
+
+
+bar_slope <-
+  bar_all_long[which(
+    str_detect(bar_all_long$variable, "\\S{3}(?=_slope)")),]
+
+
+bar_slope$variable <-
+revalue(bar_slope$variable, c("lsl_slope"="Letter",
+                                     "vsl_slope"="Image",
+                                     "tsl_slope"="Tone",
+                                     "ssl_slope"="Syllable"))
+
+bar_slope$variable <- 
+  factor(bar_slope$variable,levels = c("Image", 
+                                                  "Letter", 
+                                                  "Tone", 
+                                                  "Syllable"))
+
+bar_slope <-
+  bar_slope[order(bar_slope$variable), ]
+
+bar_slope$value <- 
+  as.numeric(as.character(bar_slope$value))
+
+
+library("pastecs")
+stat_desc <- 
+function(df,group,task) {
+  stat.desc(df[which(df$group == group & df$variable == task),])
+}
+
+td_tone <- stat_desc(bar_slope, "TD", "Tone")
+td_syllable <- stat_desc(bar_slope, "TD", "Syllable")
+td_image <- stat_desc(bar_slope, "TD", "Image")
+td_letter <- stat_desc(bar_slope, "TD", "Letter")
+
+asd_tone <- stat_desc(bar_slope, "ASD", "Tone")
+asd_syllable <- stat_desc(bar_slope, "ASD", "Syllable")
+asd_image <- stat_desc(bar_slope, "ASD", "Image")
+asd_letter <- stat_desc(bar_slope, "ASD", "Letter")
+
+td_tone_stat <- extract_line_graph_stat(td_tone, "TD", "Tone")
+td_syllable_stat <- extract_line_graph_stat(td_syllable, "TD", "Syllable")
+td_image_stat <- extract_line_graph_stat(td_image, "TD", "Image")
+td_letter_stat <- extract_line_graph_stat(td_letter, "TD", "Letter")
+
+asd_tone_stat <- extract_line_graph_stat(asd_tone, "ASD", "Tone")
+asd_syllable_stat <- extract_line_graph_stat(asd_syllable, "ASD", "Syllable")
+asd_image_stat <- extract_line_graph_stat(asd_image, "ASD", "Image")
+asd_letter_stat <- extract_line_graph_stat(asd_letter, "ASD", "Letter")
+
+
+
+slope_stat <- rbind(td_tone_stat, td_syllable_stat, td_image_stat, td_letter_stat,
+                      asd_tone_stat, asd_syllable_stat, asd_image_stat, asd_letter_stat)
+
+slope_stat$task <- 
+  factor(slope_stat$task,levels = c("Image", 
+                                              "Letter", 
+                                              "Tone", 
+                                              "Syllable"))
+slope_stat <-
+  slope_stat[order(slope_stat$task), ]
+
+print(slope_stat)
+
+pd <- position_dodge(width = 0.2)
+
+colnames(slope_stat)[colnames(slope_stat) == "group"] <- "Group"
+
+# write.csv(slope_stat, "slope_stat.csv")
+```
+
+```{r, include = F}
+detach(package:plyr)
+slope_within_stat <- summarySEwithin(bar_slope, measurevar="value", betweenvars = "group", withinvars="variable",
+                        idvar="part_id", na.rm=T, conf.interval=.95)
+
+colnames(slope_within_stat)[colnames(slope_within_stat) == "group"] <- "Group"
+colnames(slope_within_stat)[colnames(slope_within_stat) == "value"] <- "mean"
+colnames(slope_within_stat)[colnames(slope_within_stat) == "se"] <- "std_error"
+colnames(slope_within_stat)[colnames(slope_within_stat) == "variable"] <- "task"
+
+
+slope_within_stat$task <- 
+  factor(slope_within_stat$task,levels = c("Image", 
+                                              "Letter", 
+                                              "Tone", 
+                                              "Syllable"))
+```
+
+# Median Split of Slope
+```{r}
+plot_medianSplit <- function(task, titleTask) {
+ssl_slope <- allData_slope[which(allData_slope$task == task & 
+                                               allData_slope$group == "TD"),]
+ssl_slope <- ssl_slope[order(ssl_slope$age_at_web_year),]
+ssl_slope[1:round(length(ssl_slope$age_at_web_year)/2),"Group"] <- "Younger TD" 
+median <- round((length(ssl_slope$age_at_web_year)/2))+1
+ssl_slope[median:length(ssl_slope$age_at_web_year),"Group"] <- "Older TD"
+
+ssl_slopeASD <- allData_slope[which(allData_slope$task == task & 
+                                               allData_slope$group == "ASD"),]
+ssl_slopeASD$Group <- "ASD"
+
+# ssl_slopeASD <- ssl_slopeASD[order(ssl_slopeASD$age_at_web_year),]
+# ssl_slopeASD[1:round(length(ssl_slopeASD$age_at_web_year)/2),"Group"] <- "Younger ASD" 
+# medianASD <- round((length(ssl_slopeASD$age_at_web_year)/2))+1
+# ssl_slopeASD[median:length(ssl_slopeASD$age_at_web_year),"Group"] <- "Older ASD"
+
+
+
+ssl_slope_ASDtd <- rbind(ssl_slopeASD, ssl_slope)
+
+
+ssl_slope_ASDtd$Group <- 
+  factor(ssl_slope_ASDtd$Group,levels = c("ASD", 
+                                             "Younger TD",
+                                              # "Older ASD", 
+                                             "Older TD"))
+
+ssl_slope_ASDtd <-
+  ssl_slope_ASDtd[order(ssl_slope_ASDtd$Group), ]
+
+ssl_slope_ASDtd %>%
+  ggplot(aes(x = Group, y = rt_slope,fill = Group)) +
+  geom_bar(
+           position = position_dodge(),
+           width = 0.9,
+           stat = "summary", fun.y = "mean") +
+   labs(title = paste(titleTask, "SL RT Slope Median Split by Age in TD and ASD"),
+        x = "Age Group",  # Change x-axis label
+         y = paste(titleTask, "SL RT Slope (arbitrary unit/ trial)")) +
+  scale_fill_manual(values = c("#F8766d", "#00BFC4", "#00BFC4")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold"),
+        legend.title=element_text(size=15, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),         # Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) + 
+  geom_beeswarm(
+    aes(fill = Group),
+    dodge.width = 1,
+    cex = 2.5,
+    size = 0.8,
+    show.legend = FALSE,
+    shape = 1
+  )
+}
+
+plot_medianSplit("lsl_slope", "Letter")
+
+ggsave("lsl_slope_td_asd.png",
+       width = 18, height = 15, units = "cm")
+
+plot_medianSplit("ssl_slope", "Syllable")
+ggsave("ssl_slope_td_asd.png",
+       width = 18, height = 15, units = "cm")
+```
+
+
+
+```{r}
+pd <- position_dodge(width = 0.2)
+
+slope_within_stat %>%
+  ggplot(aes(x = task, y = mean, group = Group)) +
+  geom_line(aes(linetype = Group, color = Group), position = pd, size = 1.8) +
+   geom_errorbar(aes(ymin = mean - std_error, ymax = mean + std_error), width = .1, position = pd) +
+     geom_point(aes(color = Group), size = 4, position = pd,show.legend = FALSE) + 
+          geom_point(size = 3, color = "white", position = pd) +
+      labs(title = "SL Reaction Time Slope across Tasks",
+         x = "SL Task",  # Change x-axis label
+         y = "Mean Reaction Time Slope (arbitrary unit/trial)") +
+  # scale_y_reverse() +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=14, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold"),
+        legend.title=element_text(size=15, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),         # Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  )  +
+  geom_hline(yintercept=0, color = "grey") +
+  geom_text(aes(x= 2.05, y = -0.033, label = paste0("**")), size=7, color="#00BFC4") +
+  geom_text(aes(x= 4.05, y = -0.033, label = paste0("***")), size=7, color="#00BFC4") +
+  geom_text(aes(x= 0.95, y = -0.033, label = paste0("*")), size=7, color="#F8766d")
+   # geom_text(aes(x= 4.05, y = -0.025, label = paste0("*")), size=9, color="black")
+
+ 
+ ggsave(
+    "behavioral_slope_across_group.png",
+     width = 15, height = 15, units = "cm"
+ )
+```
+
+
+
+```{r}
+library(ggbeeswarm)
+slope_bar <- bar_slope 
+colnames(slope_bar)[colnames(slope_bar) == "group"] <- "Group"
+slope_bar %>%
+  ggplot(aes(x = variable, y = value)) +
+  geom_bar(
+    aes(fill = Group),
+    position = position_dodge(),
+    width = 0.9,
+    stat = "summary",
+    fun.y = "mean",
+  ) +
+ labs(title = "SL Reaction Time Slope Between Group Comparison",
+         x = "SL Task",  # Change x-axis label
+         y = "Mean Reaction Time Slope (arbitrary unit/trial)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold"),
+        legend.title=element_text(size=15, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),         # Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) + 
+  geom_beeswarm(
+    aes(fill = Group),
+    dodge.width = 1,
+    cex = 2.5,
+    size = 0.8,
+    show.legend = FALSE, 
+    shape = 1
+  ) + 
+  # geom_text(aes(x= 1, y = 1.04, label = paste0("†")), size=7) +
+  # geom_segment(aes(x=0.75,xend=1.25, y = 1.02, yend = 1.02)) +
+  # geom_segment(aes(x=0.75,xend=0.75, yend = 1, y = 1.02)) +
+  # geom_segment(aes(x=1.25,xend=1.25, yend = 1, y = 1.02)) +
+   geom_text(aes(x= 2, y = 0.102, label = paste0("*")), size=7) +
+   geom_segment(aes(x=1.75,xend=2.25, y = 0.1, yend = 0.1)) +
+   geom_segment(aes(x=1.75,xend=1.75, yend = 0.096, y = 0.1)) +
+  geom_segment(aes(x=2.25,xend=2.25, yend = 0.096, y = 0.1))
+
+# ggsave("srcd_figure/behavioral_slope_ling_bar.png",
+       # bg="transparent",
+       # width = 15.5, height = 15.5, units = "cm")
+
+```
+
+# Plot GJT A-prime vs. Composite SL score in ASD
+```{r}
+asd_composite %>%
+ggplot(aes(x = a_prime, y = composite_ling, color = language_age_level)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  # scale_fill_brewer(palette = "Set2") +
+      labs(title = "SCQ and Composite SL Score Correlation",
+         x = "SCQ Score",  # hange x-axis label
+         y = "Composite SL Score") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+   geom_smooth(aes(x = a_prime, y = composite_ling),
+              method=lm, se=T, show.legend = F, inherit.aes = F)
+  # geom_smooth(data = subset(asd_composite, language_age_level == "below_age"),
+  #             aes(x = scq_web, y = composite),
+  #             method=lm, se=FALSE, show.legend = F, inherit.aes = F) +
+  # geom_smooth(data = subset(asd_composite, language_age_level == "at_age"),
+  #             aes(x = scq_web, y = composite),
+  #             method=lm, se=FALSE, show.legend = F, inherit.aes = F)
+
+
+# ggsave("srcd_figure/RSR_LSLcorr.png",
+       # width = 17, height = 17, units = "cm")
+```
+
+
+## Correlations between Tasks
+```{r, include = FALSE}
+library("Hmisc")
+allData_td <- allData[which(allData$group == "TD"),]
+allData_asd <- allData[which(allData$group == "ASD"),]
+
+
+extract_data_for_corr_task_asd <-
+function(df) {rcorr(as.matrix(df[,c(
+      "age_at_web_year",
+      "scq_web",
+      "rbs_r",
+      "rsr_raw",
+      "rsr_std",
+      "gjt_std",
+      "a_prime",
+      "vsl_acc",
+      "lsl_acc",
+      "tsl_acc",
+      "ssl_acc",
+      "vsl_ent",
+      "entropy_children_lsl_entropy",
+      "tsl_ent",
+      "ssl_ent",
+      "vsl_rt",
+      "lsl_rt",
+      "tsl_rt",
+      "ssl_rt",
+      "vsl_slope",
+      "lsl_slope",
+      "tsl_slope",
+      "ssl_slope"
+      )]), 
+      type = c("pearson"))}
+
+extract_data_for_corr_task_td <-
+function(df) {rcorr(as.matrix(df[,c(
+      "age_at_web_year",
+      "scq_web",
+      "vsl_acc",
+      "lsl_acc",
+      "tsl_acc",
+      "ssl_acc",
+      "vsl_ent",
+      "entropy_children_lsl_entropy",
+      "tsl_ent",
+      "ssl_ent",
+      "vsl_rt",
+      "lsl_rt",
+      "tsl_rt",
+      "ssl_rt",
+      "vsl_slope",
+      "lsl_slope",
+      "tsl_slope",
+      "ssl_slope")]), 
+      type = c("pearson"))}
+
+extract_data_for_corr_task_sl <-
+  function(df) {rcorr(as.matrix(df[,c(
+    "age_at_web_year",
+      "vsl_acc",
+      "lsl_acc",
+      "tsl_acc",
+      "ssl_acc",
+      "vsl_slope",
+      "lsl_slope",
+      "tsl_slope",
+      "ssl_slope")]), type = c("pearson"))}
+
+
+corr_beh_result_across_task_asd <- extract_data_for_corr_task_asd(allData_asd)
+corr_beh_result_across_task_td <- extract_data_for_corr_task_td(allData_td)
+
+asdAccSlopeCorrTask <- extract_data_for_corr_task_sl(allData_asd)
+tdAccSlopeCorrTask <- extract_data_for_corr_task_sl(allData_td)
+
+
+flattenCorrMatrix <- function(cormat, pmat, nmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor  = (cormat)[ut],
+    p = pmat[ut],
+    n = nmat[ut]
+  )
+}
+
+
+
+beh_corr_result_pearson_task_td <- flattenCorrMatrix(corr_beh_result_across_task_td$r, 
+                                              corr_beh_result_across_task_td$P, 
+                                              corr_beh_result_across_task_td$n)
+
+
+beh_corr_result_pearson_task_asd <- flattenCorrMatrix(corr_beh_result_across_task_asd$r, 
+                                              corr_beh_result_across_task_asd$P, 
+                                              corr_beh_result_across_task_asd$n)
+
+beh_asdAccSlopeCorrTask <- flattenCorrMatrix(asdAccSlopeCorrTask$r, 
+                                              asdAccSlopeCorrTask$P, 
+                                              asdAccSlopeCorrTask$n)
+
+beh_tdAccSlopeCorrTask <- flattenCorrMatrix(tdAccSlopeCorrTask$r, 
+                                              tdAccSlopeCorrTask$P, 
+                                              tdAccSlopeCorrTask$n)
+
+#beh_corr_result_pearson_all[,c(3:5)] <- round(beh_corr_result_pearson_all[,c(3:5)], 3)
+
+
+rounded_td <- round(beh_corr_result_pearson_task_td[,c(3:5)], 3)
+beh_corr_result_pearson_task_td <- cbind(beh_corr_result_pearson_task_td[,c(1:2)], rounded_td)
+
+rounded_asd <- round(beh_corr_result_pearson_task_asd[,c(3:5)], 3)
+beh_corr_result_pearson_task_asd <- cbind(beh_corr_result_pearson_task_asd[,c(1:2)], rounded_asd)
+
+#beh_corr_result_pearson_sig_all <- beh_corr_result_pearson_all[which(beh_corr_result_pearson_all$p <= 0.05),]
+```
+
+
+```{r}
+beh_corr_result_pearson_sig_td <- beh_corr_result_pearson_task_td[which(beh_corr_result_pearson_task_td$p <= 0.05),]
+beh_corr_result_pearson_sig_asd <- beh_corr_result_pearson_task_asd[which(beh_corr_result_pearson_task_asd$p <= 0.05),]
+
+# write.csv(beh_corr_result_pearson_sig, "paper_analysis_matched/beh_corr_result_pearson_gender_matched_sample.csv")
+# write.csv(beh_corr_result_pearson_sig_td, "paper_analysis_matched/beh_corr_result_pearson_gender_matched_sample_td.csv")
+# write.csv(beh_corr_result_pearson_sig_asd, "paper_analysis_matched/beh_corr_result_pearson_gender_matched_sample_asd.csv")
+
+
+print(beh_corr_result_pearson_sig_td)
+print(beh_corr_result_pearson_sig_asd)
+```
+
+# Corrected Correlations between SL tasks for TD
+```{r}
+library(RcmdrMisc)
+sl_corrTD <-
+rcorr.adjust(as.matrix(allData_td[c("ssl_acc",
+      "tsl_acc",
+      "lsl_acc",
+      "vsl_acc",
+      "ssl_slope",
+      "tsl_slope",
+      "lsl_slope",
+      "vsl_slope"
+      )]),
+      use=c("pairwise.complete.obs"))
+
+sl_corrTD <-
+flattenCorrMatrix(data.frame(sl_corrTD$R[1]),
+                  data.frame(sl_corrTD$R[3]),
+                  data.frame(sl_corrTD$R[2]))
+                  
+write.csv(sl_corrTD, "tdSL_corr_corrected.csv")
+```
+
+# Corrected Correlation between SL tasks for ASD
+```{r}
+sl_corrASD <-
+rcorr.adjust(as.matrix(allData_asd[c("ssl_acc",
+      "tsl_acc",
+      "lsl_acc",
+      "vsl_acc",
+      "ssl_slope",
+      "tsl_slope",
+      "lsl_slope",
+      "vsl_slope")]),
+      use=c("pairwise.complete.obs"))
+
+sl_corrASD <-
+flattenCorrMatrix(data.frame(sl_corrASD$R[1]),
+                  sl_corrASD$P,
+                  data.frame(sl_corrASD$R[2]))
+
+
+# write.csv(sl_corrASD, "asdSL_corr_corrected.csv")
+```
+
+
+# Prep Heat Map 
+```{r ,include = F}
+library(plyr)
+extract_heatmap_data_task <-
+  function(df, column) {
+    revalue(
+      df[[column]],
+      c(
+        "age_at_web_year" = "Age",
+        "kbit_matrices_std" = "KBIT Standardized Score",
+        "scq_web" = "SCQ Total",
+        "rsr_raw" = "Sentence Recall Raw Score",
+        "rsr_std" = "Sentence Recall Standardized Score",
+        "tsl_acc" = "Tone Accuracy",
+        "ssl_acc" = "Syllable Accuracy",
+        "vsl_acc" = "Image Accuracy",
+        "lsl_acc" = "Letter Accuracy",
+        "tsl_acc" = "Tone Accuracy",
+        "ssl_acc" = "Syllable Accuracy",
+        "vsl_acc" = "Image Accuracy",
+        "tsl_ent" = "Tone Entropy",
+        "ssl_ent" = "Syllable Entropy",
+        "vsl_ent" = "Image Entropy",
+        "entropy_children_lsl_entropy" = "Letter Entropy",
+        "tsl_rt" = "Tone Mean RT",
+        "ssl_rt" = "Syllable Mean RT",
+        "vsl_rt" = "Image Mean RT",
+        "lsl_rt" = "Letter Mean RT",
+        "gjt_std" = "GJT Standardized Score",
+        "a_prime" = "GJT Raw Score",
+        "ssl_slope" = "Syllable RT Slope",
+        "tsl_slope" = "Tone RT Slope",
+        "vsl_slope" = "Image RT Slope",
+        "lsl_slope" = "Letter RT Slope",
+        "ssl_slope" = "Syllable RT Slope",
+        "tsl_slope" = "Tone RT Slope",
+        "vsl_slope" = "Image RT Slope",
+        "lsl_slope" = "Letter RT Slope"
+      )
+    )
+  }
+
+
+beh_corr_result_pearson_task_asd$column <- extract_heatmap_data_task(beh_corr_result_pearson_task_asd, "column")
+beh_corr_result_pearson_task_asd$row <- extract_heatmap_data_task(beh_corr_result_pearson_task_asd, "row")
+beh_corr_result_pearson_task_td$column <- extract_heatmap_data_task(beh_corr_result_pearson_task_td, "column")
+beh_corr_result_pearson_task_td$row <- extract_heatmap_data_task(beh_corr_result_pearson_task_td, "row")
+beh_asdAccSlopeCorrTask$column <- extract_heatmap_data_task(beh_asdAccSlopeCorrTask, "column")
+beh_asdAccSlopeCorrTask$row <- extract_heatmap_data_task(beh_asdAccSlopeCorrTask, "row")
+beh_tdAccSlopeCorrTask$column <- extract_heatmap_data_task(beh_tdAccSlopeCorrTask, "column")
+beh_tdAccSlopeCorrTask$row <- extract_heatmap_data_task(beh_tdAccSlopeCorrTask, "row")
+
+
+reorder_heatmap_task_func <- 
+function(df, column){
+factor(
+  df[[column]],
+  levels =
+    c("Age",
+      "KBIT Standardized Score",
+      "SCQ Total",
+      "Sentence Recall Raw Score",
+      "Sentence Recall Standardized Score",
+      "GJT Standardized Score",
+      "GJT Raw Score",
+      "Image Accuracy",
+      "Letter Accuracy",
+      "Tone Accuracy",
+      "Syllable Accuracy",
+      "Image Entropy",
+      "Letter Entropy",
+      "Tone Entropy",
+      "Syllable Entropy",
+      "Image Mean RT",
+      "Letter Mean RT",
+      "Tone Mean RT",
+      "Syllable Mean RT",
+      "Image RT Slope",
+      "Letter RT Slope",
+      "Tone RT Slope",
+      "Syllable RT Slope"
+    )
+)}
+
+
+beh_corr_result_pearson_task_asd$column <- reorder_heatmap_task_func(beh_corr_result_pearson_task_asd, "column")
+beh_corr_result_pearson_task_asd$row <- reorder_heatmap_task_func(beh_corr_result_pearson_task_asd, "row")
+
+beh_corr_result_pearson_task_td$column <- reorder_heatmap_task_func(beh_corr_result_pearson_task_td, "column")
+beh_corr_result_pearson_task_td$row <- reorder_heatmap_task_func(beh_corr_result_pearson_task_td, "row")
+beh_asdAccSlopeCorrTask$column <- reorder_heatmap_task_func(beh_asdAccSlopeCorrTask, "column")
+beh_asdAccSlopeCorrTask$row <- reorder_heatmap_task_func(beh_asdAccSlopeCorrTask, "row")
+beh_tdAccSlopeCorrTask$column <- reorder_heatmap_task_func(beh_tdAccSlopeCorrTask, "column")
+beh_tdAccSlopeCorrTask$row <- reorder_heatmap_task_func(beh_tdAccSlopeCorrTask, "row")
+
+
+round_func <-
+function(input_df) {
+  input_df[order(input_df$row,
+                 input_df$column), ]
+}
+
+
+heat_map_corr_data_task_asd <- round_func(beh_corr_result_pearson_task_asd)
+heat_map_corr_data_task_asd$cor <- round(heat_map_corr_data_task_asd$cor, 2)
+heat_map_corr_data_task_asd$p <- round(heat_map_corr_data_task_asd$p, 2)
+
+heat_map_corr_data_task_td <- round_func(beh_corr_result_pearson_task_td)
+heat_map_corr_data_task_td$cor <- round(heat_map_corr_data_task_td$cor, 2)
+heat_map_corr_data_task_td$p <- round(heat_map_corr_data_task_td$p, 2)
+
+heat_map_asdAccSlopeCorrTask <- round_func(beh_asdAccSlopeCorrTask)
+heat_map_asdAccSlopeCorrTask$cor <- round(heat_map_asdAccSlopeCorrTask$cor, 2)
+heat_map_asdAccSlopeCorrTask$p <- round(heat_map_asdAccSlopeCorrTask$p, 2)
+
+heat_map_tdAccSlopeCorrTask <- round_func(beh_tdAccSlopeCorrTask)
+heat_map_tdAccSlopeCorrTask$cor <- round(heat_map_tdAccSlopeCorrTask$cor, 2)
+heat_map_tdAccSlopeCorrTask$p <- round(heat_map_tdAccSlopeCorrTask$p, 2)
+```
+
+
+# Plot Heat Map for R, P, N for behavioral correlations
+# Across Behavioral Tasks, Within Measure (TD or ASD Only)
+```{r}
+library("ggplot2")
+
+plot_heatmap_r_func <-
+function(df) {
+ggplot(data = df, aes(x = column, y = row, fill = cor)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(
+    low = "blue",
+    high = "red",
+    mid = "white",
+    midpoint = 0,
+    limit = c(-1, 1),
+    space = "Lab",
+    name = "pearson\nCorrelation r"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 1,
+    size = 10,
+    hjust = 1
+  )) +
+  theme(axis.title.x = element_blank(),
+        axis.text.y = element_text (size = 10),
+        axis.title.y = element_blank()) +
+  coord_fixed() +
+  geom_text(aes(label = cor), color = "black", size = 2)
+}
+
+```
+
+```{r}
+library("ggplot2")
+
+legend_name <- expression(paste("Pearson's ", italic("r")))
+
+heat_map_tdAccSlopeCorrTask[which(heat_map_tdAccSlopeCorrTask$p < 0.06), "size"] <- 1
+heat_map_tdAccSlopeCorrTask[-which(heat_map_tdAccSlopeCorrTask$p < 0.06), "size"] <- 0
+
+heat_map_tdAccSlopeCorrTask[which(heat_map_tdAccSlopeCorrTask$column == "Image RT Slope" & heat_map_tdAccSlopeCorrTask$row == "Syllable Accuracy"), "size"] <- 0
+
+
+ggplot(data = heat_map_tdAccSlopeCorrTask, aes(x = column, y = row, fill = cor)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(
+    low = "blue",
+    high = "red",
+    mid = "white",
+    midpoint = 0,
+    limit = c(-1, 1),
+    space = "Lab",
+    name = legend_name
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 1,
+    size = 10,
+    hjust = 1
+  )) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text (size = 14, face="bold"),
+        axis.text.y = element_text (size = 14, face="bold"),
+        axis.title.y = element_blank()) +
+  coord_fixed() +
+  geom_text(aes(label = cor, size = size), color = "black") +
+  scale_size(range = c(2.5, 4.7), guide = F) +
+  theme(legend.text = element_text(size=12), legend.title = element_text(size=14))
+
+# # ggsave(
+# #   "paper_analysis_matched/corrR_TD.png",
+#   dpi = 150)
+
+
+ggplot(data = heat_map_tdAccSlopeCorrTask, aes(x = column, y = row, fill = n)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(
+    low = "blue",
+    high = "red",
+    mid = "white",
+    midpoint = 0,
+    limit = c(-1, 1),
+    space = "Lab",
+    name = legend_name
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 1,
+    size = 10,
+    hjust = 1
+  )) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text (size = 14, face="bold"),
+        axis.text.y = element_text (size = 14, face="bold"),
+        axis.title.y = element_blank()) +
+  coord_fixed() +
+  geom_text(aes(label = n, size = size), color = "black") +
+  scale_size(range = c(2.5, 4.7), guide = F) +
+  theme(legend.text = element_text(size=12), legend.title = element_text(size=14))
+
+# ggsave(
+#   "paper_analysis_matched/corrN_TD.png",
+#   dpi = 150)
+
+
+
+ggplot(data = heat_map_tdAccSlopeCorrTask, aes(x = column, y = row, fill = p)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(
+    low = "blue",
+    high = "red",
+    mid = "white",
+    midpoint = 0,
+    limit = c(-1, 1),
+    space = "Lab",
+    name = legend_name
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 1,
+    size = 10,
+    hjust = 1
+  )) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text (size = 14, face="bold"),
+        axis.text.y = element_text (size = 14, face="bold"),
+        axis.title.y = element_blank()) +
+  coord_fixed() +
+  geom_text(aes(label = p, size = size), color = "black") +
+  scale_size(range = c(2.5, 4.7), guide = F) +
+  theme(legend.text = element_text(size=12), legend.title = element_text(size=14))
+
+# ggsave(
+#   "paper_analysis_matched/corrP_TD.png",
+#   dpi = 150)
+```
+
+```{r}
+
+heat_map_asdAccSlopeCorrTask[which(heat_map_asdAccSlopeCorrTask$p < 0.06), "size"] <- 1
+heat_map_asdAccSlopeCorrTask[-which(heat_map_asdAccSlopeCorrTask$p < 0.06), "size"] <- 0
+
+heat_map_asdAccSlopeCorrTask[which(heat_map_asdAccSlopeCorrTask$column == "Image RT Slope" & heat_map_asdAccSlopeCorrTask$row == "Tone Accuracy"), "size"] <- 0
+
+
+ggplot(data = heat_map_asdAccSlopeCorrTask, aes(x = column, y = row, fill = cor)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(
+    low = "blue",
+    high = "red",
+    mid = "white",
+    midpoint = 0,
+    limit = c(-1, 1),
+    space = "Lab",
+    name = legend_name
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 1,
+    size = 10,
+    hjust = 1
+  )) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text (size = 14, face="bold"),
+        axis.text.y = element_text (size = 14, face="bold"),
+        axis.title.y = element_blank()) +
+  coord_fixed() +
+  geom_text(aes(label = cor, size = size), color = "black") +
+  scale_size(range = c(2.5, 4.7), guide = F) +
+  theme(legend.text = element_text(size=12), legend.title = element_text(size=14))
+
+
+# ggsave(
+#   "paper_analysis_matched/corrR_ASD.png",
+#   dpi = 150)
+
+
+ggplot(data = heat_map_asdAccSlopeCorrTask, aes(x = column, y = row, fill = n)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(
+    low = "blue",
+    high = "red",
+    mid = "white",
+    midpoint = 0,
+    limit = c(-1, 1),
+    space = "Lab",
+    name = legend_name
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 1,
+    size = 10,
+    hjust = 1
+  )) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text (size = 14, face="bold"),
+        axis.text.y = element_text (size = 14, face="bold"),
+        axis.title.y = element_blank()) +
+  coord_fixed() +
+  geom_text(aes(label = n, size = size), color = "black") +
+  scale_size(range = c(2.5, 4.7), guide = F) +
+  theme(legend.text = element_text(size=12), legend.title = element_text(size=14))
+
+
+# ggsave(
+#   "paper_analysis_matched/corrN_ASD.png",
+#   dpi = 150)
+
+ggplot(data = heat_map_asdAccSlopeCorrTask, aes(x = column, y = row, fill = p)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(
+    low = "blue",
+    high = "red",
+    mid = "white",
+    midpoint = 0,
+    limit = c(-1, 1),
+    space = "Lab",
+    name = legend_name
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 1,
+    size = 10,
+    hjust = 1
+  )) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text (size = 14, face="bold"),
+        axis.text.y = element_text (size = 14, face="bold"),
+        axis.title.y = element_blank()) +
+  coord_fixed() +
+  geom_text(aes(label = p, size = size), color = "black") +
+  scale_size(range = c(2.5, 4.7), guide = F) +
+  theme(legend.text = element_text(size=12), legend.title = element_text(size=14))
+
+
+# ggsave(
+#   "paper_analysis_matched/corrP_ASD.png",
+#   dpi = 150)
+
+```
+
+# Plot post-hoc analyses in ASD
+# Plot heat map for post-hoc analyses in ASD
+```{r}
+asd_corr_posthoc[which(asd_corr_posthoc$p < 0.08), "size"] <- 1
+asd_corr_posthoc[-which(asd_corr_posthoc$p < 0.08), "size"] <- 0
+asd_corr_posthoc$cor <- round(asd_corr_posthoc$cor, 2)
+
+ggplot(data = asd_corr_posthoc, aes(x = column, y = row, fill = cor)) +
+  geom_tile(color = "white") +
+  scale_fill_gradient2(
+    low = "blue",
+    high = "red",
+    mid = "white",
+    midpoint = 0,
+    limit = c(-1, 1),
+    space = "Lab",
+    name = legend_name
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(
+    angle = 90,
+    vjust = 1,
+    size = 10,
+    hjust = 1
+  )) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_text (size = 14, face="bold"),
+        axis.text.y = element_text (size = 14, face="bold"),
+        axis.title.y = element_blank()) +
+  coord_fixed() +
+  geom_text(aes(label = cor, size = size), color = "black") +
+  scale_size(range = c(2.5, 4.7), guide = F) +
+  theme(legend.text = element_text(size=12), legend.title = element_text(size=14))
+
+ggsave("asd_posthoc_corr.png")
+```
+
+
+
+# Plot RBS-R vs. SCQ in ASD
+```{r}
+rbs_rPlot <- allData
+rbs_rPlot$Group <- rbs_rPlot$group
+
+subset(rbs_rPlot, Group == "ASD") %>%
+ggplot(aes(x = rbs_r , y = scq_web, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "SCQ Score and RBS-R Correlation",
+         x = "RBS-R Score",  # hange x-axis label
+         y = "SCQ Score") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(rbs_rPlot, Group == "ASD"),
+              aes(x = rbs_r, y = scq_web),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") 
+
+
+# ggsave("srcd_figure/SCQ_RSRcorr.png",
+       # width = 17, height = 17, units = "cm")
+```
+
+# Plot RBS-R vs. Linguistic RT slope in ASD
+```{r}
+rtASD_ling %>%
+ggplot(aes(x = rbs_r , y = rt_slope, color = language_age_level)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  # scale_fill_brewer(palette = "Set2") +
+      labs(title = "RBS-R and Linguistic SL Slope Correlation",
+         x = "RBS-R Score",  # hange x-axis label
+         y = "Linguistic SL Slope") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(rtASD_ling, language_age_level == "below_age"),
+              aes(x = rbs_r, y = rt_slope),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F) +
+  geom_smooth(data = subset(rtASD_ling, language_age_level == "at_age"),
+              aes(x = rbs_r, y = rt_slope),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F)
+
+
+# ggsave("srcd_figure/RSR_LSLcorr.png",
+       # width = 17, height = 17, units = "cm")
+```
+
+
+
+
+# Multiple Regression for SL Task Relationships
+```{r}
+# Compare correlations of lingusitic SL tasks between groups
+summary(lm(ssl_acc ~ lsl_acc*group, data = allData))
+summary(lm(ssl_slope ~ lsl_slope*group, data = allData))
+
+```
+
+
+
+# Plot Accuracy Correlation of SL taks across groups
+
+# LSL vs. SSL Acc 
+(stronger correaltion in TD, marginal interaction in multiple regression)
+```{r}
+library(ggpubr)
+colnames(allData)[colnames(allData) == "group"] <- "Group"
+
+pd <- position_dodge(width = 0.01)
+
+allData %>%
+ggplot(aes(x = ssl_acc, y = lsl_acc, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Syllable and Letter SL Accuracy Correlation",
+         y = "Letter SL Accuracy",  # Change x-axis label
+         x = "Syllable SL Accuracy") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = ssl_acc, y = lsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = ssl_acc, y = lsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = ssl_acc, y = lsl_acc),
+           method = "pearson", label.x = 0.55, label.y = 0.92,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = ssl_acc, y = lsl_acc),
+             method = "pearson", label.x = 0.55, label.y = 0.3, 
+           inherit.aes = F, color = "#F8766d", size = 5)
+  #+ 
+  #geom_text(aes(x = 20, y = 120, label = paste("rho =", "-0.76**")),color = "red",size=4)
+
+# ggsave("srcd_figure/bucld_ssl_lsl_corr.png",
+       # width = 15, height = 15, units = "cm")
+```
+
+
+# TSL vs. VSL Acc (significant in ASD)
+```{r}
+library(ggpubr)
+colnames(allData)[colnames(allData) == "group"] <- "Group"
+
+pd <- position_dodge(width = 0.01)
+
+allData %>%
+ggplot(aes(x = tsl_acc, y = vsl_acc, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Tone and Image SL Accuracy Correlation",
+         y = "Tone SL Accuracy",  # Change x-axis label
+         x = "Image SL Accuracy") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = tsl_acc, y = vsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = tsl_acc, y = vsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d")
+# +
+#   stat_cor(data = subset(allData, Group == "TD"),
+#               aes(x = tsl_acc, y = vsl_acc),
+#            method = "pearson", label.x = 0.55, label.y = 0.95,
+#            inherit.aes = F, color = "#00BFC4", size = 5) +
+#     stat_cor(data = subset(allData, Group == "ASD"),
+#               aes(x = tsl_acc, y = vsl_acc),
+#              method = "pearson", label.x = 0.55, label.y = 0.3, 
+#            inherit.aes = F, color = "#F8766d", size = 5)
+#   #+ 
+  #geom_text(aes(x = 20, y = 120, label = paste("rho =", "-0.76**")),color = "red",size=4)
+
+# ggsave("bucld_tsl_vsl_corr.png",
+       # width = 15, height = 15, units = "cm")
+```
+
+
+
+
+# LSL vs. VSL Acc (significant in ASD)
+```{r}
+library(ggpubr)
+colnames(allData)[colnames(allData) == "group"] <- "Group"
+
+pd <- position_dodge(width = 0.01)
+
+allData %>%
+ggplot(aes(x = lsl_acc, y = vsl_acc, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Letter and Image SL Accuracy Correlation",
+         y = "letter SL Accuracy",  # Change x-axis label
+         x = "Image SL Accuracy") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = lsl_acc, y = vsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = lsl_acc, y = vsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") 
+# +
+#   stat_cor(data = subset(allData, Group == "TD"),
+#               aes(x = lsl_acc, y = vsl_acc),
+#            method = "pearson", label.x = 0.55, label.y = 0.95,
+#            inherit.aes = F, color = "#00BFC4", size = 5) +
+#     stat_cor(data = subset(allData, Group == "ASD"),
+#               aes(x = lsl_acc, y = vsl_acc),
+#              method = "pearson", label.x = 0.55, label.y = 0.3, 
+#            inherit.aes = F, color = "#F8766d", size = 5)
+  #+ 
+  #geom_text(aes(x = 20, y = 120, label = paste("rho =", "-0.76**")),color = "red",size=4)
+
+# ggsave("bucld_lsl_vsl_corr.png",
+       # width = 15, height = 15, units = "cm")
+```
+
+
+# SSL vs. TSL Slope (reverse correlations in TD vs. ASD)
+```{r}
+library(ggpubr)
+colnames(allData)[colnames(allData) == "group"] <- "Group"
+
+pd <- position_dodge(width = 0.01)
+
+allData %>%
+ggplot(aes(x = ssl_slope, y = tsl_slope, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Syllable and Tone SL Slope Correlation",
+         y = "Syllable SL Slope",  # Change x-axis label
+         x = "Tone SL Slope") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = ssl_slope, y = tsl_slope),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = ssl_slope, y = tsl_slope),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") 
+
+# ggsave("bucld_lsl_vsl_corr.png",
+       # width = 15, height = 15, units = "cm")
+```
+
+
+## Plot Age and Accuracy corr
+
+```{r}
+allData %>%
+ggplot(aes(x = age_at_web_year, y = lsl_acc, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Age and Letter SL Accuracy Correlation",
+         y = "Letter SL Accuracy",  # Change x-axis label
+         x = "Age") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = lsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = lsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = lsl_acc),
+           method = "pearson", label.x = 5, label.y = 0.95,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = lsl_acc),
+             method = "pearson", label.x = 5, label.y = 0.3, 
+           inherit.aes = F, color = "#F8766d", size = 5)
+
+# ggsave("srcd_figure/lsl_age_corr.png",
+       # width = 10, height = 15, units = "cm")
+```
+
+```{r}
+allData %>%
+ggplot(aes(x = age_at_web_year, y = lsl_slope, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Age and Letter SL RT Slope Correlation",
+         y = "Letter SL RT Slope",  # Change x-axis label
+         x = "Age") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = lsl_slope),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = lsl_slope),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = lsl_slope),
+           method = "pearson", label.x = 5, label.y = 0,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = lsl_slope),
+             method = "pearson", label.x = 5, label.y = 0.01, 
+           inherit.aes = F, color = "#F8766d", size = 5)
+
+# ggsave("paper_analysis_matched/sslSlope_age_corr.png",
+#        width = 15, height = 15, units = "cm")
+```
+
+```{r}
+allData %>%
+ggplot(aes(x = age_at_web_year, y = vsl_acc, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Age and Image SL Accuracy Correlation",
+         y = "Image SL Accuracy",  # Change x-axis label
+         x = "Age") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = vsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = vsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = vsl_acc),
+           method = "pearson", label.x = 5, label.y = 0.95,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = vsl_acc),
+             method = "pearson", label.x = 5, label.y = 0.3, 
+           inherit.aes = F, color = "#F8766d", size = 5)
+
+# ggsave("paper_analysis_matched/vsl_age_corr.png",
+#        width = 10, height = 15, units = "cm")
+
+```
+
+
+```{r}
+allData %>%
+ggplot(aes(x = age_at_web_year, y = ssl_acc, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Age and Syllable SL Accuracy Correlation",
+         y = "Syllable SL Accuracy",  # Change x-axis label
+         x = "Age") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = ssl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = ssl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = ssl_acc),
+           method = "pearson", label.x = 5, label.y = 0.95,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = ssl_acc),
+             method = "pearson", label.x = 5, label.y = 0.3, 
+           inherit.aes = F, color = "#F8766d", size = 5)
+
+# ggsave("paper_analysis_matched/ssl_age_corr.png",
+#        width = 15, height = 15, units = "cm")
+
+```
+
+```{r}
+allData %>%
+ggplot(aes(x = age_at_web_year, y = ssl_slope, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Age and Syllable SL RT Slope Correlation",
+         y = "Syllable SL RT Slope",  # Change x-axis label
+         x = "Age") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = ssl_slope),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = ssl_slope),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = ssl_slope),
+           method = "pearson", label.x = 5, label.y = 0,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = ssl_slope),
+             method = "pearson", label.x = 5, label.y = 0.01, 
+           inherit.aes = F, color = "#F8766d", size = 5)
+
+# ggsave("paper_analysis_matched/sslSlope_age_corr.png",
+#        width = 15, height = 15, units = "cm")
+```
+
+
+```{r}
+allData %>%
+ggplot(aes(x = age_at_web_year, y = tsl_acc, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Age and Tone SL Accuracy Correlation",
+         y = "Tone SL Accuracy",  # Change x-axis label
+         x = "Age") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = tsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = tsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = age_at_web_year, y = tsl_acc),
+           method = "pearson", label.x = 5, label.y = 0.95,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = age_at_web_year, y = tsl_acc),
+             method = "pearson", label.x = 5, label.y = 0.3, 
+           inherit.aes = F, color = "#F8766d", size = 5)
+
+# ggsave("srcd_figure/tsl_age_corr.png",
+       # width = 10, height = 15, units = "cm")
+```
+
+# Plot Accuracy and RT Slope Correlation
+```{r}
+allData %>%
+ggplot(aes(x = lsl_slope, y = lsl_acc, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Letter SL Accuracy and RT Slope Correlation",
+         y = "Letter SL Accuracy",  # Change x-axis label
+         x = "Letter SL RT Slope (arbitrary unit/ trial)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = lsl_slope, y = lsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = lsl_slope, y = lsl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = lsl_slope, y = lsl_acc),
+           method = "pearson", label.x = 0, label.y = 0.95,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = lsl_slope, y = lsl_acc),
+             method = "pearson", label.x = 0, label.y = 0.3, 
+           inherit.aes = F, color = "#F8766d", size = 5)
+
+# ggsave("srcd_figure/acc_slope_lslCorr.png",
+       # width = 15, height = 15, units = "cm")
+```
+
+
+```{r}
+allData %>%
+ggplot(aes(x = ssl_slope, y = ssl_acc, color = Group)) +
+  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  scale_fill_brewer(palette = "Set2") +
+      labs(title = "Syllable SL Accuracy and RT Slope Correlation",
+         y = "Syllable SL Accuracy",  # Change x-axis label
+         x = "Syllable SL RT Slope (arbitrary unit/ trial)") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+        plot.title = element_text(size=16, face="bold"),
+        axis.title.x = element_text(size=14, face="bold"),
+        axis.title.y = element_text(size=14, face="bold"),
+        axis.text=element_text(size=12, face = "bold")
+        ) +
+  theme(legend.text=element_text(size=14, face="bold")) +
+   theme(
+    panel.background = element_rect(fill = "white"),
+    legend.title = element_text(size = 16, face = "bold"),# Set plot background to white
+    legend.key  = element_rect(fill = "white"),              # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  ) +
+  geom_smooth(data = subset(allData, Group == "TD"),
+              aes(x = ssl_slope, y = ssl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#00BFC4") +
+  geom_smooth(data = subset(allData, Group == "ASD"),
+              aes(x = ssl_slope, y = ssl_acc),
+              method=lm, se=FALSE, show.legend = F, inherit.aes = F, color = "#F8766d") +
+  stat_cor(data = subset(allData, Group == "TD"),
+              aes(x = ssl_slope, y = ssl_acc),
+           method = "pearson", label.x = 0, label.y = 0.95,
+           inherit.aes = F, color = "#00BFC4", size = 5) +
+    stat_cor(data = subset(allData, Group == "ASD"),
+              aes(x = ssl_slope, y = ssl_acc),
+             method = "pearson", label.x = 0, label.y = 0.3, 
+           inherit.aes = F, color = "#F8766d", size = 5) 
+
+# ggsave("srcd_figure/acc_slope_sslCorr.png",
+       # width = 10, height = 15, units = "cm")
+```
+
+
+
+
+
+
+```{r}
+installed.packages()[names(sessionInfo()$otherPkgs), "Version"]
+```
+
+
+
