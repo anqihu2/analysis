@@ -1441,6 +1441,31 @@ compositeAge[which(compositeAge$age_at_web_year < 6.5 & compositeAge$group == "T
 # compositeAge[which(compositeAge$group == "ASD" & compositeAge$age_group == "Younger ASD"),]$gjt_std)
 ```
 
+# To DO: see if I can delete all the descriptive stat analyses above and change them into a dplyr function below (repeated)
+```{r}
+getDescripStat <- function(group, col) {
+  compositeAge %>%
+      group_by(!!as.symbol(group)) %>%
+      dplyr::summarise(mean = mean((!!as.symbol(col)), na.rm = TRUE),
+                sd = sd((!!as.symbol(col)), na.rm = TRUE),
+                n = n()) %>%
+      mutate(se = sd / sqrt(n),
+             lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
+             upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+      select(!!as.symbol(group), mean, lower_ci, upper_ci)
+      }
+
+getDescripStat("group", "composite_lsl")
+getDescripStat("group", "composite_ssl")
+getDescripStat("group", "composite_vsl")
+getDescripStat("group", "composite_tsl")
+
+getDescripStat("age_group", "composite_ling")
+getDescripStat("age_group", "composite_nonling")
+```
+
+
+
 
 ```{r}
 compositeGroup <-
@@ -2495,6 +2520,8 @@ return(acc_stat_across_sd)
 
 acc_stat_across_sd <- clean_stat(acc_stat)
 
+print(acc_stat_across_sd)
+
 # write.csv(acc_stat_across_sd, "acc_stat.csv")
 
 
@@ -3023,6 +3050,7 @@ slope_stat <- clean_stat(slope_stat)
 
 colnames(slope_stat)[colnames(slope_stat) == "group"] <- "Group"
 
+print(slope_stat)
 
 # write.csv(slope_stat, "slope_stat.csv")
 
