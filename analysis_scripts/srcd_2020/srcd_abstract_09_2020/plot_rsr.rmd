@@ -6,19 +6,98 @@ output: html_document
 ---
 
 ```{r}
-allData <- read.csv("/my_path/Qlab/bucld_2019_followup/blast_spoli_data_all_measures_no_outlier.csv")
+allData <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/online_demo_all_deidentified.csv")
+rsrOnlyGroup <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/rsrOnlyPartID.csv")
+inLabGroup <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/in_lab_children_group.csv")
+rsrAll <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/rsr_all.csv")
 
-allData <- allData[, c("part_id", "group", 
-                       "accuracy_children_vsl_accuracies",
-                            "accuracy_children_lsl_accuracies",
-                            "accuracy_children_tsl_accuracies",
-                            "accuracy_children_ssl_accuracies",
+gjt_total <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/gjt_score.csv")
+
+# SRCD RSR scores are from blast_spoli_data_all_measures_no_outlier.csv
+allData <- allData[, c("part_id", "group" 
+                       # "accuracy_children_vsl_accuracies",
+                       #      "accuracy_children_lsl_accuracies",
+                       #      "accuracy_children_tsl_accuracies",
+                       #      "accuracy_children_ssl_accuracies"
                        # "slope_children_vsl_indiv_rts_slope",
                        #  "slope_children_lsl_indiv_rts_slope",
                        #  "slope_children_tsl_indiv_rts_slope",
                        #  "slope_children_ssl_indiv_rts_slope",
-                            "rsr_raw", "rsr_std")]
+                            # "rsr_raw", "rsr_std"
+                       )]
 
+rsrOnlyGroup <- rsrOnlyGroup[, c("part_id", "group")]
+
+inLabGroup <- inLabGroup[which(inLabGroup$group != ""), c("part_id", "group")]
+
+allData <- rbind(allData, rsrOnlyGroup)
+
+allData <- rbind(allData, inLabGroup)
+
+library(stringr)
+
+allData$part_id <- as.character(allData$part_id)
+
+allData$source <- str_extract(allData$part_id, "\\S{5}")
+
+allData <- allData[-which(duplicated(allData$part_id)),]
+
+rsrAll$rsr_raw <- coalesce(rsrAll$rsr_home_raw, rsrAll$rsr_lab_raw)
+rsrAll$rsr_std <- coalesce(rsrAll$rsr_home_standard, rsrAll$rsr_lab_standard)
+```
+
+```{r}
+allRSR <-
+  merge(allData, rsrAll[,c("participant.id", "rsr_raw", "rsr_std")], 
+      by.x = "part_id", by.y = "participant.id", all.y = T)
+
+allGJT <-
+  merge(allData, gjt_total, 
+      by.x = "part_id", by.y = "part_id", all.y = T)
+
+which(duplicated(allRSR$part_id))
+which(duplicated(allGJT$part_id))
+# allData <- allData[-which(is.na(allData$group) | allData$group == ""),]
+```
+
+# Number of ASD below 85
+```{r}
+library(dplyr)
+
+allRSR %>%
+  group_by(group, source) %>%
+    summarise_at(c("rsr_std"),funs(length(which(. < 85))))
+
+allRSR %>%
+  group_by(group, source) %>%
+    replace(is.na(.), -1) %>%
+  summarise_at(c("rsr_std", "rsr_raw"),funs(length(which(. >-1))))
+
+
+allGJT$standard_score <- as.numeric(as.character(allGJT$standard_score))
+
+allGJT %>%
+  group_by(group, source) %>%
+    summarise_at(c("standard_score"),funs(length(which(. < 85))))
+
+allGJT %>%
+  group_by(group, source) %>%
+    replace(is.na(.), -1) %>%
+  summarise_at(c("standard_score", "a_prime"),funs(length(which(. >-1))))
+```
+```{r}
+rsrGJT <- merge(allRSR, allGJT, all = T)
+
+which(duplicated(rsrGJT$part_id))
+
+rsrGJTComp <- rsrGJT[which(!is.na(rsrGJT$rsr_raw) & !is.na(rsrGJT$a_prime)),]
+
+rsrGJTComp %>%
+  group_by(group, source) %>%
+  dplyr::summarise(n = n())
+```
+
+```{r}
 library(reshape)
 
 allData <- melt(allData, id.vars = c("part_id", "group", "rsr_raw", "rsr_std"))
@@ -47,6 +126,8 @@ allData$variable <-
 
 colnames(allData)[which(colnames(allData) == "group")] <- "Group"
 colnames(allData)[which(colnames(allData) == "variable")] <- "Task"
+
+library(ggpubr)
 
 allData %>%
 ggplot(aes(x = rsr_std, y = value, color = Group, shape = Task)) +
@@ -89,6 +170,9 @@ ggplot(aes(x = rsr_std, y = value, color = Group, shape = Task)) +
            inherit.aes = F, color = "#F8766d", size = 5)
    # geom_text(aes(x= 45, y = 0.96, label = paste0("R = 0.33***")), color = "black", size=5) 
 
+```
+
+```{r}
 ggsave("/my_path/Qlab/srcd/rsrstd_slacc_corr.png",
        width = 20, height = 20, units = "cm")
 ```

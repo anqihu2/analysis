@@ -151,16 +151,19 @@ acc <- merge(acc, allID, by = c("subj", "task"), all.x = T)
 
 # Load participant subset
 ```{r}
+subsample <- read.csv("/Users/jojohu/Documents/Qlab/manuscript_jndd/allSLData.csv")
+acc <- acc[which(acc$subj %in% subsample$part_id),]
 tdAcc <- acc[which(acc$group == "ASD"),]
+# tdAcc <- acc[which(acc$group == "TD"),]
 ```
 
 
 ```{r}
-# jove_subj <- read.csv("/Users/jojohu/Documents/Qlab/JoVE/jove_subj.csv")
+# manuscript_subj <- read.csv("/Users/jojohu/Documents/Qlab/manuscript/allSLData.csv")
 # 
-# tdAcc <- tdAcc[which(tdAcc$subj %in% jove_subj$part_id),]
+# tdAcc <- tdAcc[which(tdAcc$subj %in% manuscript_subj$part_id),]
 
-unique(acc$subj)
+# unique(acc$subj)
 
 # unique(jove_subj$part_id)
 
@@ -188,6 +191,7 @@ tdAcc %>%
   group_by(task, version) %>%
   summarise_at(c("trial_order"), funs(n = n()/32))
 ```
+
 
 # Calculate Alpha by task
 ```{r}
@@ -284,6 +288,7 @@ psych::alpha(lslAcc)
 psych::alpha(tslAcc)
 psych::alpha(sslAcc)
 
+# psych::splitHalf(lslAcc, check.keys = F)
 ```
 
 # SSL Reliability Specified
@@ -296,3 +301,20 @@ psych::alpha(sslAccBal)
 print(sslbal)
 ```
 
+# Split Half Reliability
+```{r}
+baseRsplitHalf <- function(df) {
+  score_e <- rowMeans(df[, c(TRUE, FALSE)], na.rm = T)  # with even items
+  score_o <- rowMeans(df[, c(FALSE, TRUE)], na.rm = T)  # with odd items
+
+  r <- cor(score_e, score_o)
+
+  r <- (2 * r) / (1 + r)
+
+  return(r)
+}
+baseRsplitHalf(vslAcc)
+baseRsplitHalf(lslAcc)
+baseRsplitHalf(tslAcc)
+baseRsplitHalf(sslAcc)
+```
