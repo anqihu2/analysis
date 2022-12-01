@@ -1,0 +1,9 @@
+"","Estimate","Std. Error","t value","Pr(>|t|)"
+"(Intercept)",-0.07,0.09,-0.79,0.43
+"group1",0.45,0.17,2.6,0.01
+"ageSplit1",-0.03,0.17,-0.2,0.84
+"composite_ssl",0.16,0.12,1.32,0.19
+"group1:ageSplit1",0.35,0.34,1.01,0.32
+"group1:composite_ssl",0.55,0.25,2.21,0.03
+"ageSplit1:composite_ssl",0.03,0.25,0.1,0.92
+"group1:ageSplit1:composite_ssl",0.56,0.5,1.13,0.26

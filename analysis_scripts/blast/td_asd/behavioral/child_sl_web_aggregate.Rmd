@@ -1,0 +1,186 @@
+---
+title: "child_sl_web_aggregate"
+author: "Jojo Hu"
+date: "12/1/2022"
+output: html_document
+---
+
+# Concatenate all online data (To Do: use data.table package to read in data to cut down file reading time, and stringAsFactor)
+```{r}
+# https://stackoverflow.com/questions/11433432/how-to-import-multiple-csv-files-at-once
+#Read in SL files that have data on NAS-------------------------------------------------------
+# input_path <- "/Volumes/data/projects/blast/data_summaries/blast_online_child/breakdown"
+# input_path2 <- "/Volumes/data/projects/spoli/data_summaries/breakdown"
+
+input_path <- "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial"
+input_path2 <- "/Users/jojohu/Documents/Qlab/spoli/data_summaries/breakdown"
+
+
+acc_files <- list.files(path =input_path,
+              pattern = "*accuracies.csv", full.names = T)
+
+rt_files <- list.files(path =input_path,
+                       pattern = "*rts.csv", full.names = T)
+
+entropy_files <- list.files(path =input_path,
+                            pattern = "*entropy.csv", full.names = T)
+
+
+
+#Spoli files-----------------------------------------------------------------------------------
+acc_files_spoli <- list.files(path =input_path2,
+                        pattern = "*accuracies.csv", full.names = T)
+
+rt_files_spoli <- list.files(path =input_path2,
+                       pattern = "*rts.csv", full.names = T)
+
+entropy_files_spoli <- list.files(path =input_path2,
+                            pattern = "*entropy.csv", full.names = T)
+
+
+#---------------------------------------------------------------------------------------------
+#Read the names and content for each BLAST file
+acc_file_name <- lapply(acc_files, basename)
+acc_files <- lapply(acc_files, read.csv)
+
+rt_file_name <- lapply(rt_files, basename)
+rt_files <- lapply(rt_files, read.csv)
+
+entropy_file_name <- lapply(entropy_files, basename)
+entropy_files <- lapply(entropy_files, read.csv)
+
+
+
+#Read in Spoli file and file names------------------------------------------------------------------------------
+acc_file_name_spoli <- lapply(acc_files_spoli, basename)
+acc_files_spoli <- lapply(acc_files_spoli, read.csv)
+
+rt_file_name_spoli <- lapply(rt_files_spoli, basename)
+rt_files_spoli <- lapply(rt_files_spoli, read.csv)
+
+entropy_file_name_spoli <- lapply(entropy_files_spoli, basename)
+entropy_files_spoli <- lapply(entropy_files_spoli, read.csv)
+
+#---------------------------------------------------------------------------------------------
+
+
+
+#Function to put the name of the file into a third column of that file-----------------------
+library("stringr")
+add_name_files <- list()
+
+add_task_name <- 
+function (file_name, files) {
+  for (i in 1:length(files)) {
+    current_file_name <- file_name[[i]]
+    current_file_name <-
+      str_extract(current_file_name, "(?<=blast_online_)\\S+(?=.csv)")
+    files[[i]]$task <- current_file_name
+    add_name_files[[i]] <- files[[i]]
+  }
+  return(add_name_files)
+}
+
+
+#Blast data put name into third column--------------------------------------------------------------------------------
+acc_data <- list()
+rt_data <- list()
+entropy_data <- list()
+
+acc_data <- add_task_name(acc_file_name, acc_files)
+rt_data <- add_task_name(rt_file_name, rt_files)
+entropy_data <- add_task_name(entropy_file_name, entropy_files)
+
+
+
+
+#Spoli data put name into third column--------------------------------------------------------------------------------
+add_name_files_spoli <- list()
+
+add_task_name_spoli <- 
+  function (file_name, files) {
+    for (i in 1:length(files)) {
+      current_file_name <- file_name[[i]]
+      current_file_name <-
+        str_extract(current_file_name, "(?<=spoli_online_)\\S+(?=.csv)")
+      files[[i]]$task <- current_file_name
+      add_name_files_spoli[[i]] <- files[[i]]
+    }
+    return(add_name_files_spoli)
+  }
+
+
+add_name_files_spoli <- list()
+
+add_task_name_spoli <- 
+  function (file_name, files) {
+    for (i in 1:length(files)) {
+      current_file_name <- file_name[[i]]
+      current_file_name <-
+        str_extract(current_file_name, "(?<=spoli_online_)\\S+(?=.csv)")
+      files[[i]]$task <- current_file_name
+      add_name_files_spoli[[i]] <- files[[i]]
+    }
+    return(add_name_files_spoli)
+  }
+
+
+
+#Spoli data put name into third column--------------------------------------------------------------------------------
+acc_data_spoli <- list()
+rt_data_spoli <- list()
+entropy_data_spoli <- list()
+
+acc_data_spoli <- add_task_name_spoli(acc_file_name_spoli, acc_files_spoli)
+rt_data_spoli <- add_task_name_spoli(rt_file_name_spoli, rt_files_spoli)
+entropy_data_spoli <- add_task_name_spoli(entropy_file_name_spoli, entropy_files_spoli)
+```
+
+
+
+```{r}
+#RT data have different length of columns
+#Blast extract only relevant RT columns--------------------------------------------------------------------
+for (i in 1:length(rt_data)) {
+  if(length(which(str_detect(colnames(rt_data[[i]]), "d_prime"))) == 0) {
+    rt_data[[i]] <- cbind(rt_data[[i]], d_prime = NA)
+  }
+  rt_data[[i]] <- 
+    rt_data[[i]][, c("par_id", "mean_rt", "scaled_rt_slope", "task", "d_prime")]
+}
+
+
+
+#Spoli extract only relevant RT columns--------------------------------------------------------------------
+for (i in 1:length(rt_data_spoli)) {
+  if(length(which(str_detect(colnames(rt_data_spoli[[i]]), "d_prime"))) == 0) {
+    rt_data_spoli[[i]] <- cbind(rt_data_spoli[[i]], d_prime = NA)
+  }
+  rt_data_spoli[[i]] <- 
+    rt_data_spoli[[i]][, c("par_id", "mean_rt", "scaled_rt_slope", "task", "d_prime")]
+}
+
+
+
+#Combine all the files (each measure, rbind to one file)--------------------------------------------------------
+#Combine blast files into one file
+acc_data <- do.call(rbind, acc_data)
+rt_data <- do.call(rbind, rt_data)
+entropy_data <- do.call(rbind, entropy_data)
+
+# Temporary solution for fixing NAs in rbind:
+rt_data_spoli[[4]]$scaled_rt_slope <- as.factor(rt_data_spoli[[4]]$scaled_rt_slope)
+
+#Combine spoli files into one file
+acc_data_spoli <- do.call(rbind, acc_data_spoli)
+rt_data_spoli <- do.call(rbind.data.frame, rt_data_spoli)
+entropy_data_spoli <- do.call(rbind, entropy_data_spoli)
+
+write.csv(acc_data, "/Users/jojohu/Documents/Qlab/manuscript_development/acc_data_blast_all.csv")
+write.csv(rt_data, "/Users/jojohu/Documents/Qlab/manuscript_development/rt_data_blast_all.csv")
+write.csv(entropy_data, "//Users/jojohu/Documents/Qlab/manuscript_development/entropy_data_blast_all.csv")
+
+write.csv(acc_data_spoli, "/Users/jojohu/Documents/Qlab/manuscript_development/acc_data_spoli_all.csv")
+write.csv(rt_data_spoli, "/Users/jojohu/Documents/Qlab/manuscript_development/rt_data_spoli_all.csv")
+write.csv(entropy_data_spoli, "/Users/jojohu/Documents/Qlab/manuscript_development/entropy_data_spoli_all.csv")
+```

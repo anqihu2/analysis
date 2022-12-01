@@ -1,0 +1,26 @@
+---
+title: "clean_bluehost_sl_backup"
+author: "Jojo Hu"
+date: "12/1/2022"
+output: html_document
+---
+
+```{r}
+org_path = "/Users/jojohu/Downloads/new_sl_data_not_on_nas"
+
+bluehost_file <- as.data.frame(list.files(path = org_path, full.names = T))
+colnames(bluehost_file) <- "bluehost"
+
+library(stringr)
+bluehost_file$part_id <- str_extract(bluehost_file$bluehost, "(blast|spoli)_(a|c)_\\S{3}")
+bluehost_file$task <- str_extract(bluehost_file$bluehost, "(ssl|lsl|vsl|tsl|rice_gj)")
+
+bluehost_file %>%
+  filter(is.na(part_id) | is.na(task))
+
+bluehost_file$new_name <- file.path(org_path, paste0(bluehost_file$part_id, "_", bluehost_file$task, ".csv"))
+
+bluehost_file$bluehost <- as.character(bluehost_file$bluehost)
+
+file.rename(from = bluehost_file$bluehost, to = bluehost_file$new_name)
+```

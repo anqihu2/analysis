@@ -1,0 +1,5 @@
+"","Estimate","Std. Error","t value","Pr(>|t|)"
+"(Intercept)",-0.08,0.16,-0.55,0.59
+"group1",0.62,0.31,1.99,0.05
+"composite_ssl",0.18,0.21,0.85,0.4
+"group1:composite_ssl",0.83,0.42,1.98,0.05

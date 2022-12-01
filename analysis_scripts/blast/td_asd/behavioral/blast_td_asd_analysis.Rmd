@@ -211,6 +211,14 @@ blast_spoli_data_wide <- blast_spoli_data_wide[-which(blast_spoli_data_wide$age_
 # 
 # 
 # print(ineligible_part_spoli[,c("part_id", "group", "age_at_web_year")])
+
+# aggreated_sl_data <-
+#   blast_spoli_data_wide %>%
+#   dplyr::select(-one_of("gjt_std", "lsl_random_2afc_acc", "lsl_predictable_2afc_acc", "lsl_predictable_ent", "lsl_randomized_ent", "entropy_children_lsl_entropy", "lsl_ent", "tsl_ent", "vsl_ent", "ssl_ent")) %>%
+#   filter(part_id != "blast_c_554_") %>%
+#   filter(part_id != "blast_c_554_blast_c_555_")
+# 
+# write.csv(aggreated_sl_data, "/Users/jojohu/Documents/Qlab/manuscript_development/aggreated_web_sl.csv", row.names = F)
 ```
 **Above are ineligible participants.**
 
