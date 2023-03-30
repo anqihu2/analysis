@@ -83,6 +83,7 @@ danASL <- do.call(dplyr::bind_rows, zList_danasl)
 ```
 
 
+
 # Clean GCSS ASL results
 ```{r}
 library(reshape2)
@@ -116,6 +117,43 @@ danASL <-
 ```
 
 
+# IMPORTANT: Change dataset
+```{r}
+allTD <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - TD.csv", stringsAsFactors = F)
+
+allTD <-
+  allTD %>%
+  filter(Fitlins == "Yes")
+
+langASLTD <- 
+  langASL %>%
+  filter(str_detect(part_id, "blast_c")) %>%
+  filter(part_id %in% unique(allTD$ID))
+
+langASLAd <-
+  langASL %>%
+  filter(str_detect(part_id, "blast_a")) 
+
+langASL <- 
+  rbind(langASLTD, langASLAd) %>%
+  distinct(.)
+
+danASLTD <-
+  danASL %>%
+  filter(str_detect(part_id, "blast_c")) %>%
+  filter(part_id %in% unique(allTD$ID))
+
+danASLAd <-
+  danASL %>%
+  filter(str_detect(part_id, "blast_a"))
+
+danASL <- 
+  rbind(danASLTD, danASLAd) %>%
+  distinct(.)
+```
+
+
+# Add hemisphere info
 ```{r}
 langASL_long <- melt(langASL, id.vars = c("Row", "part_id", "group", "run", "stimuli", "condition"))
 danASL_long <- melt(danASL, id.vars = c("Row", "part_id", "group", "run", "stimuli", "condition"))
@@ -130,27 +168,91 @@ danASL_long <-
   mutate(parcel = str_extract(danASL_long$variable, "(?<=run.)\\S+"),
          att_run = str_extract(danASL_long$variable, "(?<=run.)[[:digit:]]"))
 
-
+# Add lang loc group constrained parcel hemisphere
 langASL_long <- 
   langASL_long %>%
   mutate(hemi = case_when(
-    group == "adult" & parcel == "langloc_gcp3" ~ "Right Hemisphere",
-    group == "adult" & parcel == "langloc_gcp5" ~ "Right Hemisphere",
-    group == "adult" & parcel == "langloc_gcp6" ~ "Right Hemisphere",
-    group == "adult" & parcel == "langloc_gcp8" ~ "Right Hemisphere",
-    group == "adult" & parcel == "langloc_gcp13" ~ "Right Hemisphere",
-    group == "child" & parcel == "langloc_gcp3" ~ "Right Hemisphere",
-    group == "child" & parcel == "langloc_gcp5" ~ "Right Hemisphere",
-    group == "child" & parcel == "langloc_gcp9" ~ "Right Hemisphere",
+    # group == "adult" & parcel == "langloc_gcp3" ~ "Right Hemisphere",
+    parcel == "langloc_gcp3" ~ "Right Hemisphere",
+    parcel == "langloc_gcp4" ~ "Right Hemisphere",
     TRUE ~ "Left Hemisphere"
   ))
 
+
+langASL_long %>%
+  dplyr::select(parcel, hemi) %>%
+  distinct(.)
+```
+
+
+
+# Remove ASL motion outliers or ASL runs with negative onsets
+```{r}
+# From blast_fmri_qc.Rmd script (temporary places for these saved files; will change after first level analyses are systemized)
+negOnset <- read.csv("/Users/jojohu/Downloads/negOnset.csv", stringsAsFactors = F)
+aslTP_outlier <- read.csv("/Users/jojohu/Downloads/aslTP_outlier.csv", stringsAsFactors = F)
+
+negOnset$part_id <- paste("blast", str_extract(negOnset$part_id, "(?<=blast)\\S{1}"), str_extract(negOnset$part_id, "(?<=blast(a|c))\\S+"), sep = "_")
+negOnset$run <- as.character(negOnset$run)
+
+# Remove ASL runs with negative onsets
+langASL_long <- 
+  merge(langASL_long, negOnset[,-which(names(negOnset) %in% c("task"))], by = c("part_id", "run"), all.x = T) %>%
+  filter(is.na(file_name)) %>%
+  dplyr::select(-one_of("file_name"))
+
+aslTP_outlier$part_id <- paste("blast", str_extract(aslTP_outlier$part_id, "(?<=blast)\\S{1}"), str_extract(aslTP_outlier$part_id, "(?<=blast(a|c))\\S+"), sep = "_")
+
+aslTP_outlier <- 
+  aslTP_outlier %>%
+  mutate(stimuli = dplyr::recode(stimuli, syllable = "speech"),
+         condition = dplyr::recode(condition, R = "rand", S = "str", B = "rest"))
+
+aslTP_outlier %>%
+  filter(asl_outlier == 1)
+
+# Remove specific contrasts that are marked as motion outliers in their corresponding runs 
+langASL_long <- 
+  merge(langASL_long, aslTP_outlier[,-which(names(aslTP_outlier) %in% c("task", "stimcond"))], by = c("part_id", "stimuli", "condition"), all.x = T) %>%
+  filter(asl_outlier == 0 | is.na(asl_outlier))
+
+langASLID <- 
+  langASL_long %>%
+  dplyr::select(part_id, run, stimuli, condition) %>%
+  distinct(.) %>%
+  arrange(part_id, run)
+
+
+danASL_long <- 
+  merge(danASL_long, negOnset[,-which(names(negOnset) %in% c("task"))], by = c("part_id", "run"), all.x = T) %>%
+  filter(is.na(file_name)) %>%
+  dplyr::select(-one_of("file_name"))
+
+# Remove specific contrasts that are marked as motion outliers in their corresponding runs 
+danASL_long <- 
+  merge(danASL_long, aslTP_outlier[,-which(names(aslTP_outlier) %in% c("task", "stimcond"))], by = c("part_id", "stimuli", "condition"), all.x = T) %>%
+  filter(asl_outlier == 0 | is.na(asl_outlier))
+
+danID <- 
+  danASL_long %>%
+  dplyr::select(part_id, run, stimuli, condition) %>%
+  distinct(.) %>%
+  arrange(part_id, run)
+
+# write.csv(langASLID, "/Users/jojohu/Downloads/langASLID.csv", row.names = F)
+# write.csv(danID, "/Users/jojohu/Downloads/danID.csv", row.names = F)
+```
+
+
+
+```{r}
 write.csv(langASL_long, "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/indiv_langloc_output/asl/asl_gcss_z_results_long.csv", row.names = F)
 
 write.csv(danASL_long, "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/asl_attention/indiv_att_ouput/dan_gcss_z_results_long.csv", row.names = F)
 ```
 
-# Outlier removal for langloc
+
+# TO DO: Outlier removal for langloc with negative onsets
 ```{r, eval = F}
 # langASL_long <-
 #   langASL_long %>%
@@ -183,15 +285,130 @@ theme <-
         # Change facet color
         panel.spacing = unit(.05, "lines")
   )
+
+# Within subject standard error function
+summarySEwithin <- function(data=NULL, measurevar, betweenvars=NULL, withinvars=NULL,
+                            idvar=NULL, na.rm=FALSE, conf.interval=.95, .drop=TRUE) {
+
+  # Ensure that the betweenvars and withinvars are factors
+  factorvars <- vapply(data[, c(betweenvars, withinvars), drop=FALSE],
+    FUN=is.factor, FUN.VALUE=logical(1))
+
+  if (!all(factorvars)) {
+    nonfactorvars <- names(factorvars)[!factorvars]
+    message("Automatically converting the following non-factors to factors: ",
+            paste(nonfactorvars, collapse = ", "))
+    data[nonfactorvars] <- lapply(data[nonfactorvars], factor)
+  }
+
+  # Get the means from the un-normed data
+  datac <- summarySE(data, measurevar, groupvars=c(betweenvars, withinvars),
+                     na.rm=na.rm, conf.interval=conf.interval, .drop=.drop)
+
+  # Drop all the unused columns (these will be calculated with normed data)
+  datac$sd <- NULL
+  datac$se <- NULL
+  datac$ci <- NULL
+
+  # Norm each subject's data
+  ndata <- normDataWithin(data, idvar, measurevar, betweenvars, na.rm, .drop=.drop)
+
+  # This is the name of the new column
+  measurevar_n <- paste(measurevar, "_norm", sep="")
+
+  # Collapse the normed data - now we can treat between and within vars the same
+  ndatac <- summarySE(ndata, measurevar_n, groupvars=c(betweenvars, withinvars),
+                      na.rm=na.rm, conf.interval=conf.interval, .drop=.drop)
+
+  # Apply correction from Morey (2008) to the standard error and confidence interval
+  #  Get the product of the number of conditions of within-S variables
+  nWithinGroups    <- prod(vapply(ndatac[,withinvars, drop=FALSE], FUN=nlevels,
+                           FUN.VALUE=numeric(1)))
+  correctionFactor <- sqrt( nWithinGroups / (nWithinGroups-1) )
+
+  # Apply the correction factor
+  ndatac$sd <- ndatac$sd * correctionFactor
+  ndatac$se <- ndatac$se * correctionFactor
+  ndatac$ci <- ndatac$ci * correctionFactor
+
+  # Combine the un-normed means with the normed results
+  merge(datac, ndatac)
+}
+
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
+                      conf.interval=.95, .drop=TRUE) {
+    library(plyr)
+
+    # New version of length which can handle NA's: if na.rm==T, don't count them
+    length2 <- function (x, na.rm=FALSE) {
+        if (na.rm) sum(!is.na(x))
+        else       length(x)
+    }
+
+    # This does the summary. For each group's data frame, return a vector with
+    # N, mean, and sd
+    datac <- ddply(data, groupvars, .drop=.drop,
+      .fun = function(xx, col) {
+        c(N    = length2(xx[[col]], na.rm=na.rm),
+          mean = mean   (xx[[col]], na.rm=na.rm),
+          sd   = sd     (xx[[col]], na.rm=na.rm)
+        )
+      },
+      measurevar
+    )
+
+    # Rename the "mean" column    
+    datac <- rename(datac, c("mean" = measurevar))
+
+    datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+
+    # Confidence interval multiplier for standard error
+    # Calculate t-statistic for confidence interval: 
+    # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+    ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+    datac$ci <- datac$se * ciMult
+
+    return(datac)
+}
+
+normDataWithin <- function(data=NULL, idvar, measurevar, betweenvars=NULL,
+                           na.rm=FALSE, .drop=TRUE) {
+    library(plyr)
+
+    # Measure var on left, idvar + between vars on right of formula.
+    data.subjMean <- ddply(data, c(idvar, betweenvars), .drop=.drop,
+     .fun = function(xx, col, na.rm) {
+        c(subjMean = mean(xx[,col], na.rm=na.rm))
+      },
+      measurevar,
+      na.rm
+    )
+
+    # Put the subject means with original data
+    data <- merge(data, data.subjMean)
+
+    # Get the normalized data in a new column
+    measureNormedVar <- paste(measurevar, "_norm", sep="")
+    data[,measureNormedVar] <- data[,measurevar] - data[,"subjMean"] +
+                               mean(data[,measurevar], na.rm=na.rm)
+
+    # Remove this subject mean column
+    data$subjMean <- NULL
+
+    return(data)
+}
 ```
+
+
+
 
 # Plot ASL Mean Activation
 ```{r}
-parcelLAd <- c(1, 2, 7, 9, 4, 10)
-parcelLTD <- c(1, 12, 2, 6, 7, 8)
+parcelLAd <- c(1, 2, 6, 7)
+parcelLTD <- c(1, 2, 6, 7)
 
-parcelRAd <- c(3, 6, 5, 8, 13)
-parcelRTD <- c(3, 5, 9)
+parcelRAd <- c(3, 4)
+parcelRTD <- c(3, 4)
 ```
 
 
@@ -200,7 +417,7 @@ library(forcats)
 library(ggpattern)
 
 plotASL <- 
-  function(hemiName, groupName, parcel_order, bar_color) {
+  function(hemiName, groupName, parcel_order, bar_outline, bar_color) {
   langASL_long %>%
     filter(!is.na(value)) %>%
     group_by(part_id, group, stimuli, condition, hemi, parcel) %>%
@@ -213,13 +430,11 @@ plotASL <-
     # dplyr::summarise(value = mean(value, na.rm = TRUE)) %>%
     mutate(parcel_num = str_remove(parcel, "langloc_gcp")) %>%
     filter(hemi == hemiName & group == groupName) %>%
-    group_by(group, stimuli, condition, hemi, parcel, parcel_num) %>%
-    dplyr::summarise(mean = mean(value, na.rm = TRUE),
-                      sd = sd(value, na.rm = TRUE),
-                      n = n()) %>%
-    mutate(se = sd / sqrt(n),
-          lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
-          upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+    group_by(part_id, group, stimuli, condition, hemi, parcel, parcel_num) %>%
+    dplyr::summarise(mean = mean(value, na.rm = TRUE)) %>%
+    summarySEwithin(., measurevar = "mean", betweenvars = c("group"),  withinvars = c("stimuli", "condition", "hemi", "parcel", "parcel_num"), idvar= "part_id", na.rm=T, conf.interval=.95) %>%
+    mutate(lower_ci = mean - ci,
+           upper_ci = mean + ci) %>%
     mutate(group = factor(group, levels = c("adult", "child")),
            condition = factor(condition, levels = c("str", "rand")),
           parcel_num = factor(parcel_num, levels = parcel_order)) %>%
@@ -227,8 +442,8 @@ plotASL <-
     mutate(group = dplyr::recode(group, adult = "Adult", child = "Child"), 
            stimuli = dplyr::recode(stimuli, speech = "Syllable", tone = "Tone"),
            condition = dplyr::recode(condition, str = "Structured", rand = "Random")) %>% 
-    ggplot(aes(x = group, y = mean, fill = group, pattern = factor(condition))) +
-    geom_bar_pattern(stat = "identity", position = "dodge", color = "black") +
+    ggplot(aes(x = group, y = mean, fill = parcel_num, pattern = factor(condition))) +
+    geom_bar_pattern(stat = "identity", position = "dodge") +
     facet_grid(~stimuli+parcel_num) +
     scale_fill_manual(values = c(bar_color), guide = "none") +
     scale_pattern_manual(values=c("circle", "none"), 
@@ -239,8 +454,9 @@ plotASL <-
       pattern_density = 0.3,
       pattern_spacing = 0.04,
       pattern_key_scale_factor = 0.4,
-      color = "#000000",
+      color = bar_outline,
       pattern_colour = "black",
+      size = 3,
       pattern_fill = "black") +
     scale_pattern_manual(values = c("circle", "none")) +
     geom_errorbar(aes(ymin=mean-se, ymax=mean+se), 
@@ -251,112 +467,142 @@ plotASL <-
     guides(pattern = guide_legend(title = "SL Sequence Type", color = "black", override.aes = list(fill = c("white", "white")))) +
     theme +
     theme(axis.text.x = element_blank(),
-          axis.ticks.x=element_blank())
+          axis.ticks.x=element_blank(),
+          axis.title.x = element_blank(),)
   }
 
-plotASL("Left Hemisphere", "adult", parcelLAd, "dark grey")
+plotASL("Left Hemisphere", "adult", parcelLAd, "dark grey", c("#E69F00", "#009F73", "#D55E00", "#CC79A7"))
 ggsave("/Users/jojohu/Downloads/asl_activation_adult_lh.png", height = 20, width = 30, unit= "cm")
 
-plotASL("Left Hemisphere", "child", parcelLTD, "#A6CEE3")
+plotASL("Left Hemisphere", "child", parcelLTD, "#A6CEE3", c("#E69F00", "#009F73", "#D55E00", "#CC79A7"))
 ggsave("/Users/jojohu/Downloads/asl_activation_child_lh.png", height = 20, width = 30, unit= "cm")
 
-plotASL("Right Hemisphere", "adult", parcelRAd, "dark grey")
+plotASL("Right Hemisphere", "adult", parcelRAd, "dark grey", c("#F0E442", "#0072B1"))
 ggsave("/Users/jojohu/Downloads/asl_activation_adult_rh.png", height = 20, width = 30, unit= "cm")
 
-plotASL("Right Hemisphere", "child", parcelRTD, "#A6CEE3")
+plotASL("Right Hemisphere", "child", parcelRTD, "#A6CEE3", c("#F0E442", "#0072B1"))
 ggsave("/Users/jojohu/Downloads/asl_activation_child_rh.png", height = 20, width = 30, unit= "cm")
 ```
 
 
-
-
-
 ```{r}
-langASL_long %>%
-  filter(condition == "str") %>%
-  group_by(part_id, group, stimuli, condition, hemi) %>%
-  dplyr::summarise(mean = mean(value, na.rm = TRUE)) %>%
-  arrange(group, stimuli, condition, hemi) %>%
-  mutate(group = factor(group, levels = c("adult", "child")),
-         condition = factor(condition, levels = c("str", "rand"))) %>%
-  mutate(group = dplyr::recode(group, adult = "Adult", child = "Child"), 
-         stimuli = dplyr::recode(stimuli, speech = "Syllable", tone = "Tone"),
-         condition = dplyr::recode(condition, str = "Structured", rand = "Random")) %>% 
-  ggplot(aes(x = stimuli, y = mean, color = group)) +
-  geom_point(alpha = 0.3) +
-  facet_grid(c("hemi", "group")) +
-  geom_text(aes(label = part_id))
+plotASLByParcel <-
+  function(hemiName, parcelNumber, stimName, bar_color) {
+  langASL_long %>%
+    filter(!is.na(value)) %>%
+    mutate(group = dplyr::recode(group, adult = "Adult", child = "Child"), 
+           condition = dplyr::recode(condition, str = "Structured", rand = "Random"),
+           parcel = str_remove(parcel, "langloc_gcp")) %>% 
+    group_by(part_id, group, stimuli, condition, hemi, parcel) %>%
+    dplyr::summarise(value = mean(value, na.rm = T)) %>%
+    spread(condition, value) %>%
+    filter(!is.na(str)) %>%
+    filter(!is.na(rand)) %>%
+    gather(condition, value, -part_id, -group, -stimuli, -hemi, -parcel) %>%
+    filter(hemi == hemiName & parcel == parcelNumber & stimuli == stimName) %>%
+    group_by(part_id, group, condition) %>%
+    summarySEwithin(., measurevar = "value", betweenvars = "group",  withinvars = "condition", idvar= c("part_id"), na.rm=T, conf.interval=.95) %>%
+    mutate(lower_ci = value - ci,
+           upper_ci = value + ci) %>%
+    mutate(group = factor(group, levels = c("Adult", "Child")),
+           condition = factor(condition, levels = c("Structured", "Random"))) %>%
+    arrange(group, condition) %>%
+    ggplot(aes(x = group, y = value, fill = condition)) +
+    geom_bar(aes(color = group), stat = "identity", position = "dodge", size = 7) +
+    geom_errorbar(aes(ymin=value-se, ymax=value+se),
+                  position = position_dodge(0.9),
+                  show.legend = FALSE,
+                  width = .2) +
+    scale_fill_manual(values = c(bar_color, alpha(bar_color, .5))) +
+    scale_color_manual(values = c("dark grey", "#0072B1")) +
+    guides(color = guide_legend(title = "Group", override.aes = list(fill = c("white", "white"), size = c(5, 5)))) +
+  guides(fill = guide_legend(title = "Condition", override.aes = list(size = c(0, 0)))) +
+    ylab("Mean Activation Level (Arbitrary Unit)") +
+    theme +
+    theme(axis.text.x = element_blank(),
+          axis.ticks.x=element_blank(),
+          axis.title.x = element_blank())
+    }
 
-langASL_long %>%
-  filter(condition == "rand") %>%
-  group_by(part_id, group, stimuli, condition, hemi) %>%
-  dplyr::summarise(mean = mean(value, na.rm = TRUE)) %>%
-  arrange(group, stimuli, condition, hemi) %>%
-  mutate(group = factor(group, levels = c("adult", "child")),
-         condition = factor(condition, levels = c("str", "rand"))) %>%
-  mutate(group = dplyr::recode(group, adult = "Adult", child = "Child"), 
-         stimuli = dplyr::recode(stimuli, speech = "Syllable", tone = "Tone"),
-         condition = dplyr::recode(condition, str = "Structured", rand = "Random")) %>% 
-  ggplot(aes(x = stimuli, y = mean, color = group)) +
-  geom_point(alpha = 0.3) +
-  facet_grid(c("hemi", "group")) + 
-  geom_text(aes(label = part_id))
+plotASLByParcel("Left Hemisphere", "1", "speech", "#E69F00")
+ggsave("/Users/jojohu/Downloads/ssl_activation_parcel1.png", height = 20, width = 30, unit= "cm")
+
+plotASLByParcel("Left Hemisphere", "2", "speech", "#009F73")
+ggsave("/Users/jojohu/Downloads/ssl_activation_parcel2.png", height = 20, width = 30, unit= "cm")
+
+plotASLByParcel("Left Hemisphere", "6", "speech", "#D55E00")
+ggsave("/Users/jojohu/Downloads/ssl_activation_parcel6.png", height = 20, width = 30, unit= "cm")
+
+plotASLByParcel("Left Hemisphere", "7", "speech", "#CC79A7")
+ggsave("/Users/jojohu/Downloads/ssl_activation_parcel7.png", height = 20, width = 30, unit= "cm")
+
+plotASLByParcel("Right Hemisphere", "3", "speech", "#F0E442")
+ggsave("/Users/jojohu/Downloads/ssl_activation_parcel3.png", height = 20, width = 30, unit= "cm")
+
+plotASLByParcel("Right Hemisphere", "4", "speech", "#A6CEE3")
+ggsave("/Users/jojohu/Downloads/ssl_activation_parcel4.png", height = 20, width = 30, unit= "cm")
 ```
+
+
+
 
 # Plot ASL Mean Activation (Group * Condition)
 ```{r}
 langASL_long %>%
-  group_by(group, condition) %>%
-  dplyr::summarise(mean = mean(value, na.rm = TRUE),
-                    sd = sd(value, na.rm = TRUE),
-                    n = n()) %>%
-  mutate(se = sd / sqrt(n),
-        lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
-        upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
-  arrange(group, condition) %>%
+  # filter(stimuli == "speech") %>%
+  group_by(part_id, group, condition, stimuli) %>%
+  dplyr::summarise(mean = mean(value, na.rm = TRUE)) %>%
+  summarySEwithin(., measurevar = "mean", betweenvars = c("group"),  withinvars = c("condition", "stimuli"), idvar= "part_id", na.rm=T, conf.interval=.95) %>%
+  mutate(lower_ci = mean - ci,
+           upper_ci = mean + ci) %>%
+  arrange(group, condition, stimuli) %>%
   mutate(group = factor(group, levels = c("adult", "child")),
          condition = factor(condition, levels = c("str", "rand"))) %>%
   mutate(group = dplyr::recode(group, adult = "Adult", child = "Child"), 
          # stimuli = dplyr::recode(stimuli, speech = "Syllable", tone = "Tone"),
          condition = dplyr::recode(condition, str = "Structured", rand = "Random")) %>% 
-  ggplot(aes(x = condition, y = mean, fill = group, pattern = factor(condition))) +
-  geom_bar_pattern(stat = "identity", position = "dodge", color = "black") +
-  facet_wrap(c("group")) +
-  scale_fill_manual(values = c("dark grey","#A6CEE3"), guide = "none") +
-  scale_pattern_manual(values=c("circle", "none"), 
-                       guide = "legend") +
-  ylab("Mean Activation Level (Arbitrary Unit)") +
-   geom_col_pattern(width = 0.9,
-    position = position_dodge(),
-    pattern_density = 0.1,
-    pattern_spacing = 0.025,
-    pattern_key_scale_factor = 0.6,
-    color = "#000000",
-    pattern_colour = "black",
-    pattern_fill = "black") +
-  scale_pattern_manual(values = c("circle", "none")) +
+  ggplot(aes(x = condition, y = mean, fill = interaction(condition, group))) +
+  # ggplot(aes(x = condition, y = mean, fill = group, pattern = factor(condition))) +
+  # geom_bar_pattern(stat = "identity", position = "dodge", color = "black") +
+  geom_bar(aes(color = interaction(condition, group)), stat = "identity", position = "dodge") +
   geom_errorbar(aes(ymin=mean-se, ymax=mean+se), 
                 position = position_dodge(0.9), 
                 show.legend = FALSE, 
-                width = .3) +
-  # scale_pattern_spacing_discrete(range = c(0.025, 0.05)) + 
-  guides(pattern = guide_legend(title = "SL Sequence Type", color = "black", override.aes = list(fill = c("white", "white")))) +
-  theme
+                width = .2) +
+  facet_grid(~group+stimuli) +
+  scale_fill_manual(values = c("dark grey", alpha("dark grey", .6), "#0072B1", alpha("#0072B1", .6)), guide = "none") +
+  scale_color_manual(values = c("dark grey", alpha("dark grey", .6), "#0072B1", alpha("#0072B1", .6)), guide = "none") +
+  # scale_pattern_manual(values=c("circle", "none"), 
+  #                      guide = "legend") +
+  ylab("Mean Activation Level (Arbitrary Unit)") +
+   # geom_col_pattern(width = 0.9,
+   #  position = position_dodge(),
+   #  pattern_density = 0.1,
+   #  pattern_spacing = 0.025,
+   #  pattern_key_scale_factor = 0.6,
+   #  color = "#000000",
+   #  pattern_colour = "black",
+   #  pattern_fill = "black") +
+  # scale_pattern_manual(values = c("circle", "none")) +
+  # scale_pattern_spacing_discrete(range = c(0.025, 0.05)) +
+  # guides(pattern = guide_legend(title = "Condition", color = "black", override.aes = list(fill = c("white", "white")))) +
+  theme +
+    theme(axis.ticks.x=element_blank(),
+          axis.title.x = element_blank())
+    
 
-ggsave("/Users/jojohu/Downloads/asl_activation_group_cond.png", height = 20, width = 30, unit= "cm")
+ggsave("/Users/jojohu/Downloads/asl_activation_group_cond_speech_tone.png", height = 20, width = 35, unit= "cm")
 ```
 
 
 # Plot ASL Mean Activation (Stim * Condition)
 ```{r}
 langASL_long %>%
-  group_by(stimuli, condition) %>%
-  dplyr::summarise(mean = mean(value, na.rm = TRUE),
-                    sd = sd(value, na.rm = TRUE),
-                    n = n()) %>%
-  mutate(se = sd / sqrt(n),
-        lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
-        upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+  group_by(part_id, stimuli, condition) %>%
+  dplyr::summarise(mean = mean(value, na.rm = TRUE)) %>%
+  summarySEwithin(., measurevar = "mean",  withinvars = c("stimuli", "condition"), idvar= "part_id", na.rm=T, conf.interval=.95) %>%
+  mutate(lower_ci = mean - ci,
+         upper_ci = mean + ci) %>%
   arrange(stimuli, condition) %>%
   mutate(condition = factor(condition, levels = c("str", "rand"))) %>%
   mutate(stimuli = dplyr::recode(stimuli, speech = "Syllable", tone = "Tone"),
@@ -400,17 +646,42 @@ langASL_long$group <-
 langASL_long <- langASL_long[order(langASL_long$group),]
 
 asl_m1 <-
-  lmer(value ~ group*stimuli*condition*hemi + (1+stimuli+condition|part_id),  
+  lmer(value ~ group*stimuli*condition*hemi + perc_outlier + (1|parcel) + (1|part_id),  
        data = langASL_long,
       contrasts = list(group = c(-0.5, 0.5), 
                        condition = c(-0.5, 0.5),
                        stimuli = c(-0.5, 0.5),
-                       hemi = c(-0.5, 0.5)))
+                       hemi = c(-0.5, 0.5)),
+       control = lmerControl(optimizer = "bobyqa"))
 
 summary(asl_m1)
 
-# group1:stimuli1:hemi1            -2.082e-01  9.212e-02  6.740e+03  -2.260  0.02382 *  
+# Broken down by stimuli
+asl_m1.2 <-
+  lmer(value ~ group*condition*hemi + perc_outlier + (1|parcel) + (1|part_id),  
+       data = langASL_long[which(langASL_long$stimuli == "speech"),],
+      contrasts = list(group = c(-0.5, 0.5), 
+                       condition = c(-0.5, 0.5),
+                       hemi = c(-0.5, 0.5)),
+       control = lmerControl(optimizer = "bobyqa"))
 
+summary(asl_m1.2)
+
+# Broken down by stimuli
+asl_m1.3 <-
+  lmer(value ~ group*condition*hemi + perc_outlier + (1|parcel) + (1|part_id),  
+       data = langASL_long[which(langASL_long$stimuli == "tone"),],
+      contrasts = list(group = c(-0.5, 0.5), 
+                       condition = c(-0.5, 0.5),
+                       hemi = c(-0.5, 0.5)),
+       control = lmerControl(optimizer = "bobyqa"))
+
+summary(asl_m1.3)
+```
+
+
+
+```{r}
 asl_m2 <-
   lmer(value ~ group*stimuli*condition + (1+stimuli+condition|part_id),  
        data = langASL_long[which(langASL_long$hemi == "Left Hemisphere"),],
@@ -610,7 +881,7 @@ tAll_marked <-
   mutate(stars = coalesce(three_star, two_star, one_star, marginal)) %>%
   select(-one_of("three_star", "two_star", "one_star", "marginal"))
   
-write.csv(tAll_marked, "/Users/jojohu/Downloads/asl_t_test_str_rand.csv")
+write.csv(tAll_marked, "/Users/jojohu/Downloads/asl_t_test_str_rand.csv", row.names = F)
 ```
 
 
@@ -673,11 +944,11 @@ mean_aslTDStim <-
   spread(condition, mean) 
 
  
-t_test_pair(mean_aslAllS$str, mean_aslAllS$rand)
-t_test_pair(mean_aslAllT$str, mean_aslAllT$rand)
+t.test(mean_aslAllS$str, mean_aslAllS$rand, paired = T)
+t.test(mean_aslAllT$str, mean_aslAllT$rand, paired = T)
 
-t_test_pair(mean_aslAdStim$str, mean_aslAdStim$rand)
-t_test_pair(mean_aslTDStim$str, mean_aslTDStim$rand)
+t.test(mean_aslAdStim$str, mean_aslAdStim$rand, paired = T)
+t.test(mean_aslTDStim$str, mean_aslTDStim$rand, paired = T)
 ```
 
 
@@ -692,13 +963,11 @@ langASL_long %>%
   mutate(percent_change = ((str-rand)/rand)) %>%
   mutate(percent_change = percent_change*100) %>%
   # filter(!(abs(percent_change - mean(percent_change, na.rm = T)) > 3*sd(percent_change, na.rm = T))) %>%
-  group_by(group, stimuli, hemi) %>%
-  dplyr::summarise(mean = mean(percent_change, na.rm = T),
-                   sd = sd(percent_change, na.rm = TRUE),
-                    n = n()) %>%
-  mutate(se = sd / sqrt(n),
-        lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
-        upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+  group_by(part_id, group, stimuli, hemi) %>%
+  dplyr::summarise(mean = mean(percent_change, na.rm = T)) %>%
+  summarySEwithin(., measurevar = "mean",  betweenvars = c("group"), withinvars = c("stimuli", "hemi"), idvar= "part_id", na.rm=T, conf.interval=.95) %>%
+  mutate(lower_ci = mean - ci,
+         upper_ci = mean + ci) %>%
   arrange(group, stimuli, hemi) %>%
   mutate(group = factor(group, levels = c("adult", "child"))) %>%
   mutate(group = dplyr::recode(group, adult = "Adult", child = "Child"), 
@@ -772,6 +1041,19 @@ pasl_m3 <-
                        stimuli = c(-0.5, 0.5)))
 
 summary(pasl_m3)
+
+percentASLS <- 
+  percentASL %>%
+  filter(stimuli == "speech")
+
+paslS_m1 <-
+  lmer(percent_change ~ group + (1+hemi|part_id),  
+       data = percentASLS,
+      contrasts = list(group = c(-0.5, 0.5)))
+
+summary(paslS_m1)
+
+t.test(percent_change~group, percentASLS)
 ```
 
 
@@ -786,51 +1068,52 @@ dan <- danASL_long
 library(ggpattern)
 
 dan %>%
+  # filter(stimuli == "speech") %>%
   # group_by(group, run, stimuli, condition) %>%
   # filter(!(abs(value - mean(value, na.rm = T)) > 1.5*sd(resampled_conn_dan, na.rm = T))) %>%
-  group_by(part_id, group, stimuli, condition) %>%
-  dplyr::summarise(value = mean(value, na.rm = TRUE)) %>%
-  group_by(group, stimuli, condition) %>%
-  dplyr::summarise(mean = mean(value, na.rm = TRUE),
-                    sd = sd(value, na.rm = TRUE),
-                    n = n()) %>%
-  mutate(se = sd / sqrt(n),
-        lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
-        upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
-  arrange(group, stimuli, condition) %>%
+  group_by(part_id, group, condition, stimuli) %>%
+  dplyr::summarise(mean = mean(value, na.rm = TRUE)) %>%
+  summarySEwithin(., measurevar = "mean", betweenvars = c("group"),  withinvars = c("condition", "stimuli"), idvar= "part_id", na.rm=T, conf.interval=.95) %>%
+  mutate(lower_ci = mean - ci,
+           upper_ci = mean + ci) %>%
+  arrange(group, condition) %>%
   mutate(group = factor(group, levels = c("adult", "child")),
          condition = factor(condition, levels = c("str", "rand"))) %>%
   mutate(group = dplyr::recode(group, adult = "Adult", child = "Child"), 
-         stimuli = dplyr::recode(stimuli, speech = "Syllable", tone = "Tone"),
+         # stimuli = dplyr::recode(stimuli, speech = "Syllable", tone = "Tone"),
          condition = dplyr::recode(condition, str = "Structured", rand = "Random")) %>% 
-  ggplot(aes(x = group, y = mean, fill = group, pattern = factor(condition))) +
-  geom_bar_pattern(stat = "identity", position = "dodge", color = "black") +
-  facet_wrap(c("stimuli")) +
-  scale_fill_manual(values = c("dark grey","#A6CEE3"), guide = "none") +
-  scale_pattern_manual(values=c("circle", "none"), 
-                       labels = c("Structured", "Random"), 
-                       guide = "legend", 
-                       (title = "SL Sequence Type")) +
-  ylab("Dorsal Attention Network Mean Activation Level (Arbitrary Unit)") +
-   geom_col_pattern(width = 0.9,
-    position = position_dodge(),
-    pattern_density = 0.1,
-    pattern_spacing = 0.025,
-    pattern_key_scale_factor = 0.6,
-    color = "#000000",
-    pattern_colour = "black",
-    pattern_fill = "black") +
-  scale_pattern_manual(values = c("circle", "none")) +
+  # ggplot(aes(x = group, y = mean, fill = group, pattern = factor(condition))) +
+  ggplot(aes(x = condition, y = mean, fill = interaction(condition, group))) +
+  geom_bar(aes(color = group), stat = "identity", position = "dodge") +
   geom_errorbar(aes(ymin=mean-se, ymax=mean+se), 
                 position = position_dodge(0.9), 
                 show.legend = FALSE, 
-                width = .3) +
+                width = .2) +
+  # geom_bar_pattern(stat = "identity", position = "dodge", color = "black") +
+  facet_grid(~stimuli+group) +
+  # scale_pattern_manual(values=c("circle", "none"), 
+  #                      labels = c("Structured", "Random"), 
+  #                      guide = "legend", 
+  #                      (title = "SL Sequence Type")) +
+  ylab("Dorsal Attention Network Mean Activation Level (Arbitrary Unit)") +
+   # geom_col_pattern(width = 0.9,
+   #  position = position_dodge(),
+   #  pattern_density = 0.1,
+   #  pattern_spacing = 0.025,
+   #  pattern_key_scale_factor = 0.6,
+   #  color = "#000000",
+   #  pattern_colour = "black",
+   #  pattern_fill = "black") +
+  # scale_pattern_manual(values = c("circle", "none")) +
+  scale_fill_manual(values = c("dark grey", alpha("dark grey", .6), "#0072B1", alpha("#0072B1", .6)), guide = "none") +
+  scale_color_manual(values = c("dark grey", alpha("dark grey", .6), "#0072B1", alpha("#0072B1", .6)), guide = "none") +
   # scale_pattern_spacing_discrete(range = c(0.025, 0.05)) + 
-  guides(pattern = guide_legend(title = "SL Sequence Type", color = "black", override.aes = list(fill = c("white", "white")))) +
+  # guides(pattern = guide_legend(title = "SL Sequence Type", color = "black", override.aes = list(fill = c("white", "white")))) +
   theme +
-  theme(axis.title.x = element_blank())
+  theme(axis.ticks.x=element_blank(),
+          axis.title.x = element_blank())
 
-ggsave("/Users/jojohu/Downloads/dan_activation.png", width = 30, height = 15, units = "cm")    
+ggsave("/Users/jojohu/Downloads/dan_activation.png", width = 35, height = 20, units = "cm")    
 ```
 
 
@@ -842,13 +1125,11 @@ dan %>%
   # filter(!(abs(value - mean(value, na.rm = T)) > 1.5*sd(value, na.rm = T))) %>%
   group_by(part_id, group, stimuli, condition) %>%
   dplyr::summarise(value = mean(value, na.rm = TRUE)) %>%
-  group_by(group, stimuli, condition) %>%
-  dplyr::summarise(mean = mean(value, na.rm = TRUE),
-                    sd = sd(value, na.rm = TRUE),
-                    n = n()) %>%
-  mutate(se = sd / sqrt(n),
-        lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
-        upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+  group_by(part_id, group, stimuli, condition) %>%
+  dplyr::summarise(mean = mean(value, na.rm = TRUE)) %>%
+  summarySEwithin(., measurevar = "mean", betweenvars = c("group"),  withinvars = c("stimuli", "condition"), idvar= "part_id", na.rm=T, conf.interval=.95) %>%
+  mutate(lower_ci = mean - ci,
+         upper_ci = mean + ci) %>%
   arrange(stimuli, condition) %>%
   mutate(condition = factor(condition, levels = c("str", "rand"))) %>%
   mutate(group = dplyr::recode(group, adult = "Adult", child = "Child"),
@@ -987,11 +1268,12 @@ dan %>%
 # Dosal Attention Network Analysis
 ```{r}
 dan_m1 <-
-  lmer(value ~ group*stimuli*condition + (1+stimuli+condition|part_id),  
+  lmer(value ~ group*stimuli*condition + perc_outlier + (1+stimuli+condition|part_id),  
        data = dan,
       contrasts = list(group = c(-0.5, 0.5), 
                        condition = c(-0.5, 0.5),
-                       stimuli = c(-0.5, 0.5)))
+                       stimuli = c(-0.5, 0.5)),
+       control = lmerControl(optimizer = "bobyqa"))
 
 summary(dan_m1)
 
@@ -999,7 +1281,8 @@ dan_m2 <-
   lmer(value ~ group*condition + (1+condition|part_id),  
        data = dan[which(dan$stimuli == "speech"),],
       contrasts = list(group = c(-0.5, 0.5), 
-                       condition = c(-0.5, 0.5)))
+                       condition = c(-0.5, 0.5)),
+      control = lmerControl(optimizer = "bobyqa"))
 
 summary(dan_m2)
 
@@ -1132,6 +1415,8 @@ cohen.d(mean ~ condition | Subject(part_id) , data = mean_danTDT_complete, paire
 
 # Correlational Analysis between ASL and DAN
 ```{r}
+# library(tidyr)
+
 mean_percentASL <-
   percentASL %>%
   group_by(part_id, group, hemi, stimuli) %>%
@@ -1177,6 +1462,7 @@ asl_attRand <- merge(mean_dan_random, mean_asl, by = c("part_id", "group", "stim
 # Calculate difference score for langloc parcels activation and compare to DAN difference
 aslDiff_attDiff<-
   asl_attDiff %>%
+  filter(stimuli == "speech") %>%
   group_by(part_id, group, stimuli, condition, mean_dan, parcel) %>%
   dplyr::summarise(value = mean(value, na.rm = T)) %>%
   spread(condition, value) %>%
@@ -1184,7 +1470,29 @@ aslDiff_attDiff<-
   dplyr::select(-one_of("rand", "str", "<NA>"))
 
 # Put in a fake condition for the correlational plot function
-aslDiff_attDiff$condition <- "str"
+aslDiff_attDiff$condition <- "str-rand"
+
+mean_dan_diff <- 
+  asl_att %>%
+  filter(stimuli == "speech") %>%
+  group_by(part_id, group, stimuli, condition, mean_dan, parcel) %>%
+  dplyr::summarise(mean_dan = mean(mean_dan, na.rm = T)) %>%
+  spread(condition, mean_dan) %>%
+  mutate(mean_dan = str-rand) %>%
+  dplyr::select(-one_of("rand", "str", "<NA>"))
+
+mean_asl_diff <- 
+  asl_att %>%
+  filter(stimuli == "speech") %>%
+  group_by(part_id, group, stimuli, condition, parcel) %>%
+  dplyr::summarise(value = mean(value, na.rm = T)) %>%
+  spread(condition, value) %>%
+  mutate(value = str-rand) %>%
+  dplyr::select(-one_of("rand", "str", "<NA>"))
+
+aslDiff_attDiff <- merge(mean_asl_diff, mean_dan_diff, by = c("part_id", "group", "stimuli", "parcel"), all.x = T)
+
+aslDiff_attDiff$condition <- "str-rand"
 ```
 
 
@@ -1267,14 +1575,14 @@ sigParcelTD <-
 plot_danCorr <-
   function(df, groupName, colorPoint) {
     df %>%
-    filter(group == groupName & stimuli == "speech" & condition == "str") %>%
+    filter(group == groupName & stimuli == "speech" & (condition == "str-rand")) %>%
     filter(parcel %in% sigParcelTD$parcel_text) %>%
     group_by(part_id, group, stimuli, condition, mean_dan) %>%
     dplyr::summarise(value = mean(value, na.rm = T)) %>%
     mutate(group = dplyr::recode(group, adult = "Adult", child = "Child")) %>%
     ggplot(aes(x = mean_dan, y = value, color = group)) +
     scale_color_manual(values = c(colorPoint)) +
-    geom_point(size = 6, shape = 1, position = pd, stroke = 3, alpha = 0.3) +
+    geom_point(size = 6, shape = 1, position = position_dodge(.2), stroke = 3, alpha = 0.3) +
     labs(x = "Dorsal Attention Network Activation (Arbitrary Unit)",  # Change x-axis label
         y = "Language Network Activation (Arbitrary Unit)") +
    # facet_wrap("condition") +
@@ -1301,7 +1609,7 @@ plot_danCorr <-
           # Add panel border
           panel.border = element_rect(color = "black", fill = NA, size = 0.5)
           ) +
-      stat_cor(aes(x = mean_dan, y = value), method = "pearson", label.y = 1.5, label.x = -0.5,
+      stat_cor(aes(x = mean_dan, y = value), method = "spearman", label.y = 1.5, label.x = -0.5,
                inherit.aes = F, color = "#00BFC4", size = 5) +
       geom_smooth(aes(x = mean_dan, y = value), size = 3, color = colorPoint, method=lm, se=FALSE, show.legend = F, inherit.aes = F) 
     # +
@@ -1328,6 +1636,69 @@ plot_danCorr(aslDiff_attDiff, "adult", "dark grey")
 ggsave("/Users/jojohu/Downloads/asl_diff_dan_diff_corr_adult_sig.png", width = 20, height = 15, units = "cm")    
 plot_danCorr(aslDiff_attDiff, "child", "#A6CEE3")
 ggsave("/Users/jojohu/Downloads/asl_diff_dan_diff_corr_child_sig.png", width = 20, height = 15, units = "cm") 
+```
+
+
+
+```{r}
+mean_diff_asl_dan <- 
+  aslDiff_attDiff %>%
+    filter(group == "adult" & stimuli == "speech" & (condition == "str-rand")) %>%
+    filter(parcel %in% sigParcelAd$parcel_text) %>%
+    group_by(part_id, group, stimuli, condition, mean_dan) %>%
+    dplyr::summarise(value = mean(value, na.rm = T))
+
+cor.test(mean_diff_asl_dan$mean_dan, mean_diff_asl_dan$value, method = "spearman")
+
+mean_diff_asl_dan <- 
+  aslDiff_attDiff %>%
+    filter(group == "child" & stimuli == "speech" & (condition == "str-rand")) %>%
+    filter(parcel %in% sigParcelTD$parcel_text) %>%
+    group_by(part_id, group, stimuli, condition, mean_dan) %>%
+    dplyr::summarise(value = mean(value, na.rm = T))
+
+cor.test(mean_diff_asl_dan$mean_dan, mean_diff_asl_dan$value, method = "spearman")
+```
+
+```{r}
+ aslDiff_attDiff %>%
+    filter(group == "adult" & stimuli == "speech" & condition == "str") %>%
+    filter(parcel %in% sigParcelTD$parcel_text) %>%
+    group_by(part_id, group, stimuli, condition, mean_dan) %>%
+    dplyr::summarise(value = mean(value, na.rm = T)) %>%
+    mutate(group = dplyr::recode(group, adult = "Adult", child = "Child")) %>%
+    ggplot(aes(x = mean_dan, y = value, color = group)) +
+    scale_color_manual(values = c(colorPoint)) +
+    geom_point(size = 6, shape = 1, position = position_dodge(.2), stroke = 3, alpha = 0.3) +
+    labs(x = "Dorsal Attention Network Activation (Arbitrary Unit)",  # Change x-axis label
+        y = "Language Network Activation (Arbitrary Unit)") +
+   # facet_wrap("condition") +
+    guides(color = guide_legend(title="Group", color = "black", override.aes = list(fill = "white"))) +
+    # facet_grid(c("stimuli", "condition")) +
+    theme(plot.title = element_text(size = 22, face = "bold"),
+          axis.title.x=element_text(size = 26, face = "bold"),
+          axis.title.y = element_text(size = 24, face = "bold"),
+          axis.text = element_text(size = 24, face = "bold"),
+          axis.line.x = element_line(colour = "black", size = 1),  # Add line to x axis
+          axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+          legend.text = element_text(size = 24, face = "bold"),
+          legend.title = element_text(size = 24, face = "bold"),
+          # legend.position = c(0.17, 0.88),
+          legend.background = element_rect(fill = "#ffffff00"),
+          # legend.key  = element_rect(fill = "black"),              # Set legend item backgrounds to white
+          panel.background = element_rect(fill = "white"),
+          # Add line to y axis
+          strip.text = element_text(size = 24, face = "bold"),
+          # Change facet text
+          strip.background = element_rect(fill = "white", size = 1),
+          # Change facet color
+          panel.spacing = unit(.05, "lines"),
+          # Add panel border
+          panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+          ) +
+      stat_cor(aes(x = mean_dan, y = value), method = "spearman", label.y = 1.5, label.x = -0.5,
+               inherit.aes = F, color = "#00BFC4", size = 5) +
+      geom_smooth(aes(x = mean_dan, y = value), size = 3, color = colorPoint, method=lm, se=FALSE, show.legend = F, inherit.aes = F) 
 ```
 
 
@@ -1370,7 +1741,7 @@ asl_att2 %>%
   dplyr::summarise(value = mean(value, na.rm = T)) %>%
   ggplot(aes(x = value, y = mean_dan, color = "#a6cee3")) +
   scale_color_manual(values = c("#a6cee3")) +
-  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7,) +
+  geom_point(size = 4, shape = 1, position = position_dodge(0.2), stroke = 1.7,) +
   labs(x = "Mean Activation Level in SL Tasks (Arbitrary Unit)",  # Change x-axis label
       y = "Dorsal Attention Network Activation (Arbitrary Unit)") +
  # facet_wrap("condition") +
@@ -1415,7 +1786,7 @@ asl_att2 %>%
   dplyr::summarise(value = mean(value, na.rm = T)) %>%
   ggplot(aes(x = value, y = mean_dan, color = "black")) +
   scale_color_manual(values = c("black")) +
-  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7,) +
+  geom_point(size = 4, shape = 1, position = position_dodge(0.2), stroke = 1.7,) +
   labs(x = "Mean Activation Level in SL Tasks (Arbitrary Unit)",  # Change x-axis label
       y = "Dorsal Attention Network Activation (Arbitrary Unit)") +
  # facet_wrap("condition") +
@@ -1456,7 +1827,7 @@ percent_att %>%
   #        mean_dan = scale(mean_dan))%>%
   ggplot(aes(x = mean_percent, y = mean_dan,color = group)) +
   scale_color_manual(values = c("black",  "#a6cee3")) +
-  geom_point(size = 4, shape = 1, position = pd, stroke = 1.7) +
+  geom_point(size = 4, shape = 1, position = position_dodge(0.2), stroke = 1.7) +
   labs(x = "Percent Change from Structured to Random Sequences (%)",  # Change x-axis label
       y = "Dorsal Attention Network Activation (Arbitrary Unit)") +
  # facet_wrap("condition") +
