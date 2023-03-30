@@ -1,0 +1,82 @@
+---
+title: "Untitled"
+author: "Jojo Hu"
+date: "12/30/2022"
+output: html_document
+---
+
+# Read in event files
+```{r}
+eve <- 
+  read.csv("/Users/jojohu/Downloads/sub-blasta001_vsl_run_1_eve.txt", sep = "\t")
+
+# Do some transformations to the event file first
+library(dplyr)
+
+eve <-
+  eve %>%
+  # caculate the interstimulus interval between the current stimulus and the previous stimulus
+  mutate(isi = append(0, diff(onset))) %>%
+  # reset the onset from 0 seconds
+  mutate(timepoint = cumsum(isi),
+         source = "event_file")
+```
+
+# Create data frames for fMRI event files
+```{r}
+# Calculate the number of rows based on the whole duration of the run
+row_num <- (max(eve$onset) - min(eve$onset))*(1/0.8)
+round_up <- ceiling(row_num)
+# Create a new dataframe for new event files
+new_eve <- 
+  data.frame(matrix(1, ncol = 1, nrow = round_up)) %>%
+  # Create a column with fMRI time points (first time point should be 0)
+  mutate(timepoint = append(0, seq(2:round_up)*0.8),
+         source = "fmri") %>%
+  dplyr::select(timepoint, source)
+```
+
+# Make fMRI event files
+```{r}
+# combine the event file timepoints with the fMRI timepoints
+allEve <-
+  dplyr::bind_rows(eve, new_eve) %>%
+  arrange(timepoint, source) %>%
+  dplyr::mutate(change_source = source)
+
+# Deal with the last timepoint
+# If the last timepoint is from the event file, then change it to a fMRI timepoint
+if(tail(allEve, 1)[,"source"] == "event_file") {
+  allEve[nrow(allEve), "change_source"] <- "fmri"
+  # Just to double check that the right row (last row) is changed
+  which(allEve$source != allEve$change_source) == nrow(allEve)
+} else if (tail(allEve, 1)[,"source"] == "fmri") {
+  # If the last timepoint is a fMRI timepoint, then get rid of it as the last timepoint should be a event file timepoint
+  allEve <- allEve[-nrow(allEve),]
+}
+
+# Now fill in the rows of the fMRI timepoints 
+library(zoo)
+
+allEve[,c("onset", "word", "location", "image", "repetition", "trialnum", "condition", "isi")] <-
+  na.locf(allEve[,c("onset", "word", "location", "image", "repetition", "trialnum", "condition", "isi")])
+
+# Extract only the fMRI timepoints and select the only relevant columns
+fmriEve <-
+  allEve %>%
+  filter(change_source == "fmri") %>%
+  dplyr::mutate(fmri_tp = timepoint) %>%
+  dplyr::select("onset", "word", "location", "image", "repetition", "trialnum", "condition", "fmri_tp")
+
+write.csv(fmriEve, "path to where you want to save the fmri event files.")
+write.csv(fmriEve, "/Users/jojohu/Downloads/fmriEvent.txt", row.names = F)
+```
+
+
+
+
+
+
+
+
+

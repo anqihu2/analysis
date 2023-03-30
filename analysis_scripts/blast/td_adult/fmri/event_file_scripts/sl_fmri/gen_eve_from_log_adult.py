@@ -5,11 +5,11 @@ Created on Sat Jan  4 21:49:41 2020
 
 @author: wtang
 """
-
+# TO DO: something is wrong with blast_a_002_auditory_run2 log file and cannot be run through in this script... worked before
 import re
 import os
 
-curr_dir = os.path.realpath("/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/adult/log_files")
+curr_dir = os.path.realpath("/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/adult/log_files/")
 group_name = 'blast_a'
 
 ###first create list of subjects

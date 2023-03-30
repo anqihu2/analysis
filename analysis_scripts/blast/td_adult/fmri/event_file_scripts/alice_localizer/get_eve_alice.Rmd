@@ -101,17 +101,17 @@ cond_sum <-
 cond %>%
   dplyr::select("subjectID", "randSeed", "list", "order", "run", "condition", "trialNum") %>%
   group_by(subjectID, randSeed, list, order, run) %>%
-  summarise(condition_sum = toString(condition)) %>%
+  dplyr::summarise(condition_sum = toString(condition)) %>%
   ungroup() %>%
   dplyr::select("order", "condition_sum") %>%
   distinct(.)
 
 # Calculate duration of trials
 allEV <- 
-  bind_rows(adultEV, childEV) %>%
+  dplyr::bind_rows(adultEV, childEV) %>%
   filter(str_detect(subjectID, "blast")) %>%
-  mutate(onset = as.numeric(as.character(onset))) %>%
-  mutate(duration = onset - lag(onset)) %>%
+  dplyr::mutate(onset = as.numeric(as.character(onset))) %>%
+  dplyr::mutate(duration = onset - lag(onset)) %>%
   filter(!is.na(onset))
 
 allEV$duration <- append(allEV$duration[-1], NA)
@@ -127,9 +127,9 @@ allEV %>%
 
 allEV <-
   allEV %>%
-  mutate(partID = paste0("sub-", str_remove_all(subjectID, "_"))) %>%
-  mutate(trial_type = condition)
-  
+  distinct(.) %>%
+  dplyr::mutate(partID = paste0("sub-", str_remove_all(subjectID, "_"))) %>%
+  dplyr::mutate(trial_type = condition) 
 
 for (i in unique(allEV$partID)) {
   run1 <-
@@ -157,35 +157,16 @@ for (i in unique(allEV$partID)) {
 ```
 
 
-```{r, eval = F, include = F}
-# No longer using because run and order can be extracted through in scanner behavioral data (see code above)
-# Extract the demo and run orders for participants
-checklist <- read.csv("/Volumes/data/projects/blast/data/derivatives/event_files/alice_localizer/qlab_participant_checklist - blast_in_lab.csv", stringsAsFactors = F)
-
-colnames(checklist) <- checklist[1,]
-
-checklist <- checklist[-1,]
-
-checklist <- 
-  checklist %>%
-  dplyr::select(`Participant ID`, Group, Gender, Age, `date of birth`, date_mri_collection, Seed, List, Order)
-
-alice_manual_order <- 
-  checklist %>%
-  dplyr::select(`Participant ID`, Order) %>%
-  mutate(order = as.numeric(as.character(Order)),
-         part_id = str_extract(`Participant ID`, "blast_(a|c)_[[:digit:]]+")) %>%
-  filter(!is.na(part_id)) %>%
-  mutate(partID = paste0("sub-", str_remove_all(`Participant ID`, "_")))
-```
-
-
 
 # Create event files for each individual and move into their bids/func folder
 ```{r}
 alice_from <- 
   list.files("/Volumes/data/projects/blast/data/bids", 
-              pattern = "sub-blast(a|c)\\d+_task-langloc_run-\\d+_events.tsv$", full.names = T, recursive = T)
+              pattern = "sub-blast(a|c)*", full.names = T, recursive = F)
+
+alice_from <- 
+  list.files(paste0(alice_from, "/func"), 
+              pattern = "sub-blast(a|c)\\d+_task-langloc_run-\\d+_events.tsv$", full.names = T, recursive = F)
 
 bk <- alice_from
 ```

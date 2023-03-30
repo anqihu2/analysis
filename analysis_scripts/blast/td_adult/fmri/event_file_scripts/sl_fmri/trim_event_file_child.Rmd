@@ -159,29 +159,29 @@ checkOrder <-
   dateRun %>%
   dplyr::select(PartID, task, date_formatted, time, Run) %>%
   dplyr::distinct(.) %>%
-  mutate(date_formatted = as.Date(date_formatted),
+  dplyr::mutate(date_formatted = as.Date(date_formatted),
          Run = as.factor(Run)) %>%
   arrange(PartID, task, date_formatted, time) %>%
   distinct(PartID, task, Run, .keep_all = TRUE) %>%
   group_by(PartID, task) %>%
   dplyr::filter(n() == 4) %>%
-  summarise(run = toString(Run)) %>%
+  dplyr::summarise(run = toString(Run)) %>%
   ungroup() %>%
   filter(run != "1, 2, 3, 4" & run!= "3, 4, 1, 2")  %>%
-  mutate(notes = "This is a subject with irregularly-ordered runs. Please check their runsheet to see if the runs were indeed ordered this way and leave notes on this spreadsheet.")
+  dplyr::mutate(notes = "This is a subject with irregularly-ordered runs. Please check their runsheet to see if the runs were indeed ordered this way and leave notes on this spreadsheet.")
   
 duplicatedRun <-
   dateRun %>%
   dplyr::select(PartID, task, date_formatted, time, Run) %>%
   dplyr::distinct(.) %>%
-  mutate(date_formatted = as.Date(date_formatted),
+  dplyr::mutate(date_formatted = as.Date(date_formatted),
          Run = as.factor(Run)) %>%
   arrange(PartID, task, date_formatted, time) %>%
   group_by(PartID, task, Run) %>%
   filter(n() > 1) %>%
   distinct(PartID, .keep_all = F) %>%
   dplyr::rename(run = Run) %>%
-  mutate(notes = "This is the duplicated run in the in_scanner_behavioral data folder. Please remove the corresponding incomplete run from the behavioral and imaging data (bids and fmriprep).")
+  dplyr::mutate(notes = "This is the duplicated run in the in_scanner_behavioral data folder. Please remove the corresponding incomplete run from the behavioral and imaging data (bids and fmriprep).")
 
 checkRun <- rbind(as.data.frame(duplicatedRun), as.data.frame(checkOrder))
 
@@ -192,7 +192,11 @@ write.csv(checkRun, "/Users/jojohu/Documents/Qlab/fmri/data/child/manual_check_r
 ```{r}
 bidsEvent <-
   list.files(path = "/Volumes/data/projects/blast/data/bids",
-           pattern = "*\\_bold.nii.gz$", recursive = T, full.names = T)
+           pattern = "sub-blastc", recursive = F, full.names = T)
+
+bidsEvent <-
+  list.files(path = paste0(bidsEvent, "/func"),
+           pattern = "*\\_bold.nii.gz$", recursive = F, full.names = T)
 
 bidsBold <- as.data.frame(bidsEvent)
 
@@ -224,8 +228,8 @@ bidsEvent <-
   arrange(PartID, task, Run) %>%
   filter(task == "auditory" | task == "visual") %>%
   group_by(PartID, task) %>%
-  summarise(bids_run = toString(Run)) %>%
-  ungroup()
+  dplyr::summarise(bids_run = toString(Run)) %>%
+  dplyr::ungroup()
 ```
 
 
@@ -235,12 +239,12 @@ runOnly <-
   dateRun %>%
   dplyr::select(PartID, task, date_formatted, time, Run) %>%
   dplyr::distinct(.) %>%
-  mutate(date_formatted = as.Date(date_formatted)) %>%
+  dplyr::mutate(date_formatted = as.Date(date_formatted)) %>%
   arrange(PartID, task, date_formatted, time) %>%
   dplyr::select(PartID, task, Run) %>%
   dplyr::distinct(.) %>%
   group_by(PartID, task) %>%
-  summarise(run_order = toString(Run)) %>%
+  dplyr::summarise(run_order = toString(Run)) %>%
   ungroup()
 
 runOnly <- merge(runOnly, unique(bidsEvent), by = c("PartID", "task"), all.x = T)
@@ -314,6 +318,8 @@ changeRun$basename <- basename(as.character(changeRun$eventFile))
 changeRun$eventFile <- as.character(changeRun$eventFile)
 changeRun$archive <- paste0("/Volumes/data/projects/blast/data/derivatives/event_files/children_new/original_event_files/", changeRun$basename)
 
+print(changeRun)
+
 file.rename(as.character(changeRun$eventFile), changeRun$archive)
 ```
 
@@ -339,6 +345,8 @@ changeRun1$renameFile <- str_replace(changeRun1$archive, "(?<=run-0)\\S{1}", cha
 
 changeRun1$renameFile <- str_remove(changeRun1$renameFile, "/original_event_files")
 
+print(changeRun1)
+
 file.rename(changeRun1$archive, changeRun1$renameFile)
 ```
 
@@ -360,6 +368,8 @@ changeRun2$renameFile <- str_remove(changeRun2$renameFile, "/original_event_file
 changeRun2 <-
   changeRun2 %>%
   filter(!is.na(eventFile))
+
+print(changeRun2)
 
 file.rename(changeRun2$archive, changeRun2$renameFile)
 ```
