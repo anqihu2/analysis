@@ -5,17 +5,18 @@ date: '2023-03-14'
 output: html_document
 ---
 
-# Read in all children's time series from langloc and ASL on NAS that has not been freesurfer editted
+# Read in all time series from langloc and ASL on NAS that has not been freesurfer editted
 ```{r}
+library(dplyr)
 # These documentations are helpful to know which confound outputs are used: https://neurostars.org/t/naming-change-confounds-regressors-to-confounds-timeseries/17637 https://fmriprep.org/en/stable/outputs.html
 # Read in all original time series data from fMRIPrep
 funcDir <-
-  paste0(list.files(path = "/Volumes/data/projects/blast/data/derivatives/fmriprep", 
-          pattern = "sub-blastc\\d+$", full.names = T, recursive = F), "/func")
+  paste0(list.files(path = "/Volumes/data/projects/blast/data/derivatives_new/fmriprep", 
+          pattern = "sub-blast(a|c)\\d+$", full.names = T, recursive = F), "/func")
 
-aslSE <- list.files(funcDir, pattern = "sub-blastc\\d+_task-asl_run-\\d+_desc-confounds_regressors.tsv$", full.names = TRUE)
+aslSE <- list.files(funcDir, pattern = "sub-blast(a|c)\\d+_task-asl_run-\\d+_desc-confounds_(regressors|timeseries).tsv$", full.names = TRUE)
 
-langSE <- list.files(funcDir, pattern = "sub-blastc\\d+_task-langloc_run-\\d+_desc-confounds_regressors.tsv$", full.names = TRUE)
+langSE <- list.files(funcDir, pattern = "sub-blast(a|c)\\d+_task-langloc_run-\\d+_desc-confounds_(regressors|timeseries).tsv$", full.names = TRUE)
 
 read_tsv <- 
   function(file) {
@@ -40,8 +41,8 @@ langSE_df <- lapply(langSE, read_tsv)
 
 
 
-# Mark Motion Outliers for ASL that has not been freesurfer editted
-```{r}
+# Mark Motion Outliers for ASL that has not been freesurfer editted (not necessary any more bc nilearn first-level analysis pipeline does this)
+```{r, eval = F}
 library(reshape2)
 
 mark_outlier <-
@@ -81,23 +82,23 @@ mark_outlier <-
 ```
 
 
-# Mark Motion Outliers for ASL and Lang Loc that have not been freesurfer editted
-```{r}
+# Mark Motion Outliers for ASL and Lang Loc that have not been freesurfer editted (not necessary any more bc nilearn first-level analysis pipeline does this)
+```{r, eval = F}
 mark_outlier(aslSE_df)
 
 mark_outlier(langSE_df)
 ```
 
 
-# Read in all children's time series from langloc and ASL on NAS that have been freesurfer editted
+# Read in all time series from langloc and ASL on NAS that have been freesurfer editted
 ```{r}
 funcDir <-
   paste0(list.files(path = "/Volumes/data/projects/blast/data/fs_edited_data/fmriprep", 
-          pattern = "sub-blastc\\d+$", full.names = T, recursive = F), "/func")
+          pattern = "sub-blast(a|c)\\d+$", full.names = T, recursive = F), "/func")
 
-aslSE_edit <- list.files(funcDir, pattern = "sub-blastc\\d+_task-asl_run-\\d+_desc-confounds_timeseries.tsv$", full.names = TRUE)
+aslSE_edit <- list.files(funcDir, pattern = "sub-blast(a|c)\\d+_task-asl_run-\\d+_desc-confounds_timeseries.tsv$", full.names = TRUE)
 
-langSE_edit <- list.files(funcDir, pattern = "sub-blastc\\d+_task-langloc_run-\\d+_desc-confounds_timeseries.tsv$", full.names = TRUE)
+langSE_edit <- list.files(funcDir, pattern = "sub-blast(a|c)\\d+_task-langloc_run-\\d+_desc-confounds_timeseries.tsv$", full.names = TRUE)
 
 aslSE_edit_df <- list()
 aslSE_edit_df <- lapply(aslSE_edit, read_tsv)
@@ -107,7 +108,7 @@ langSE_edit_df <- lapply(langSE_edit, read_tsv)
 ```
 
 
-```{r}
+```{r, eval = F}
 library(reshape2)
 
 mark_outlier_fs <-
@@ -147,297 +148,350 @@ mark_outlier_fs <-
 ```
 
 
-# Mark Motion Outliers for ASL and Lang Loc that have been freesurfer editted
-```{r}
+# Mark Motion Outliers for ASL and Lang Loc that have been freesurfer editted (not necessary any more bc nilearn first-level analysis pipeline does this)
+```{r, eval = F}
 mark_outlier_fs(aslSE_edit_df)
 mark_outlier_fs(langSE_edit_df)
 ```
 
 
-# Summarise motion outliers
+# Prep matching between timeseries and event files
 ```{r}
-aslSEL<- do.call(dplyr::bind_rows, aslSE_df)
-aslSEL_edit <- do.call(dplyr::bind_rows, aslSE_edit_df)
+# aslSEL<- do.call(dplyr::bind_rows, aslSE_df)
+# aslSEL_edit <- do.call(dplyr::bind_rows, aslSE_edit_df)
+# 
+# langSEL<- do.call(dplyr::bind_rows, langSE_df)
+# langSEL_edit <- do.call(dplyr::bind_rows, langSE_edit_df)
 
-langSEL<- do.call(dplyr::bind_rows, langSE_df)
-langSEL_edit <- do.call(dplyr::bind_rows, langSE_edit_df)
+# Combine files that are freesurfer edited
+aslSE_edit <-
+  as.data.frame(aslSE_edit) %>%
+  mutate(name = basename(as.character(aslSE_edit))) %>%
+  mutate(part_id = str_extract(name, "blast\\S+[:digit:]{3}"),
+        run = str_extract(name, "(?<=_run-0)[:digit:]{1}"),
+        task = str_extract(name, "asl|vsl"))
 
-aslSEL$source <- "aslSEL"
-aslSEL_edit$source <- "aslSEL_edit"
-langSEL$source <- "langSEL"
-langSEL_edit$source <- "langSEL_edit"
+aslSE <- 
+  as.data.frame(aslSE) %>%
+  mutate(name = basename(as.character(aslSE))) %>%
+  mutate(part_id = str_extract(name, "blast\\S+[:digit:]{3}"),
+        run = str_extract(name, "(?<=_run-0)[:digit:]{1}"),
+        task = str_extract(name, "asl|vsl")) %>%
+  filter(!part_id %in% aslSE_edit$part_id) # Do not include files that are freesurfer editted
 
-SEL <- dplyr::bind_rows(aslSEL, aslSEL_edit, langSEL, langSEL_edit)
+aslTS <-
+  dplyr::bind_rows(aslSE, aslSE_edit) %>%
+  arrange(part_id, run) %>%
+  mutate(file_path = coalesce(aslSE_edit, aslSE))
 
-SEL$part_id <- str_extract(SEL$file_name, "blast\\S+[:digit:]{3}")
+# Make sure no duplicated subjects/ runs is included. Should be zero.
+aslTS %>%
+  group_by(part_id, run) %>%
+  dplyr::summarise(n = n()) %>%
+  filter(n != 1)
 
-SEL$run <- str_extract(SEL$file_name, "(?<=run-)[:digit:]{2}")
+langSE_edit <-
+  as.data.frame(langSE_edit) %>%
+  mutate(name = basename(as.character(langSE_edit))) %>%
+  mutate(part_id = str_extract(name, "blast\\S+[:digit:]{3}"),
+        run = str_extract(name, "(?<=_run-0)[:digit:]{1}"),
+        task = str_extract(name, "langloc"))
 
-SEL$task <- str_extract(SEL$file_name, "(?<=task-)\\S+(?=_run)")
+langSE <- 
+  as.data.frame(langSE) %>%
+  mutate(name = basename(as.character(langSE))) %>%
+  mutate(part_id = str_extract(name, "blast\\S+[:digit:]{3}"),
+        run = str_extract(name, "(?<=_run-0)[:digit:]{1}"),
+        task = str_extract(name, "langloc")) %>%
+  filter(!part_id %in% aslSE_edit$part_id) # Do not include files that are freesurfer editted
 
-SEL %>%
-  filter(task == "langloc") %>%
-  distinct(.) %>%
-  group_by(part_id, task, run, source) %>%
-  mutate(motion_outlier = ifelse(framewise_displacement > 2, 1, 0)) %>%
-  dplyr::summarise(n = n(), sum_tp = sum(motion_outlier)) %>%
-  dplyr::mutate(percent_loss = sum_tp/n) %>%
-  ggplot(aes(x = percent_loss)) + 
-  geom_histogram(color="black", fill="white") +
-  facet_grid(~task+run)
-```
+langlocTS <-
+  dplyr::bind_rows(langSE, langSE_edit) %>%
+  arrange(part_id, run) %>%
+  mutate(file_path = coalesce(langSE_edit, langSE))
 
-# Generate different lists of participants based on data loss threshold for Lang Loc
-```{r}
-funcDir <-
-  paste0(list.files(path = "/Volumes/data/projects/blast/data/derivatives/fmriprep", 
-          pattern = "sub-blast(a|c)\\d+$", full.names = T, recursive = F), "/func")
-
-langlocSE <- list.files(funcDir, pattern = "sub-blast(a|c)\\d+_task-langloc_run-\\d+_desc-confounds_(timeseries|regressors).tsv$", full.names = TRUE)
-
-langloc_df <- list()
-langloc_df <- lapply(langlocSE, read_tsv)
-SEL <- do.call(dplyr::bind_rows, langloc_df)
-
-SEL$part_id <- str_extract(SEL$file_name, "blast\\S+[:digit:]{3}")
-
-SEL$run <- str_extract(SEL$file_name, "(?<=run-)[:digit:]{2}")
-
-SEL$task <- str_extract(SEL$file_name, "(?<=task-)\\S+(?=_run)")
-
-
-#Lang loc threshold in TD children is 30% data loss. Remove anyone who has more than 30% of data loss in each run of lang loc 
-lossP <-
-  SEL %>%
-  filter(task == "langloc") %>%
-  distinct(.) %>%
-  group_by(part_id, task, run, source) %>%
-  mutate(motion_outlier = ifelse(framewise_displacement > 2, 1, 0)) %>%
-  dplyr::summarise(n = n(), sum_tp = sum(motion_outlier)) %>%
-  dplyr::mutate(percent_loss = sum_tp/n) %>%
-  dplyr::mutate(remove_langloc = ifelse(percent_loss > 0.3, 1, 0)) %>%
-  # filter(percent_loss > 0.3) %>%
-  dplyr::select(part_id, percent_loss, remove_langloc, source) %>%
-  distinct(.)
-
-lossP$part_id <- paste("blast", str_extract(lossP$part_id, "(?<=blast)\\S{1}"), str_extract(lossP$part_id, "(?<=blastc)\\S+"), sep = "_")
-
-editLangID <- 
-  lossP %>%
-  ungroup() %>%
-  filter(str_detect(source, "edit")) %>%
-  dplyr::select(part_id) %>%
-  distinct(.)
-
-# Get rid of the non-editted old/ original fmriPrep outputs
-lossP <- lossP[-which(lossP$part_id %in% editLangID$part_id & !str_detect(lossP$source, "edit")),]
-
-
-
-# TO DO: compile all demographic data for BLAST in lab participants
-tdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - TD.csv")
-
-
-lossP[which(lossP$part_id %in% tdID$ID),] %>%
-  ungroup() %>%
-  dplyr::select(part_id) %>%
-  arrange(part_id) %>%
-  distinct(.)
-
-# write.csv(lossP[which(lossP$part_id %in% tdID$ID),], "/Users/jojohu/Downloads/gc_td.csv")
+# Make sure no duplicated subjects/ runs is included. Should be zero.
+langlocTS %>%
+  group_by(part_id, run) %>%
+  dplyr::summarise(n = n()) %>%
+  filter(n != 1)
 ```
 
 
-# Generate different lists of participants based on data loss threshold for ASL
-# If the confound regressors have already been marked, then skip the previous blocks of code marking outliers; just look at descriptive distribution of motion outliers from here
+
+# Generate different lists of participants based on data loss threshold for SL Tasks
+
+# Get event files for ASL to extract which block corresponds to which timepoint
+1. Clean ASL Event Files so that events can be matched onto fMRI timeseries
 ```{r}
-# After everyone's freesufer edited fmriprep output are moved to this directory below:
-funcDir <-
-  paste0(list.files(path = "/Volumes/data/projects/blast/data/derivatives/fmriprep", 
-          pattern = "sub-blast(a|c)\\d+$", full.names = T, recursive = F), "/func")
+# Change paths to NAS
+input_path1 <- "/Volumes/data/projects/blast/data/derivatives/event_files/adults_new"
+input_path2 <- "/Volumes/data/projects/blast/data/derivatives/event_files/children_new"
 
-aslSE <- list.files(funcDir, pattern = "sub-blast(a|c)\\d+_task-asl_run-\\d+_desc-confounds_(timeseries|regressors).tsv$", full.names = TRUE)
+library(stringr)
 
-aslSE_df <- list()
-aslSE_df <- lapply(aslSE, read_tsv)
-SEL <- do.call(dplyr::bind_rows, aslSE_df)
+shorteve1 <- list.files(path = input_path1,
+                       pattern = "*\\.tsv$", full.names = T)
 
-SEL$part_id <- str_extract(SEL$file_name, "blast\\S+[:digit:]{3}")
+shorteve2 <- list.files(path = input_path2,
+                       pattern = "*\\.tsv$", full.names = T)
 
-SEL$run <- str_extract(SEL$file_name, "(?<=run-)[:digit:]{2}")
-
-SEL$task <- str_extract(SEL$file_name, "(?<=task-)\\S+(?=_run)")
+eveAll <- unique(append(shorteve1, shorteve2))
 
 
+extract_asl_outlier <- function(df) {
+  
+  eveDF <- read_tsv(df)
+  
+  # If the short event file is not empty:
+  if (nrow(eveDF) > 0) {
+    
+    mean_onset <-
+      eveDF %>%
+      filter(onset > 0 | onset == 0) %>%
+      dplyr::mutate(offset = onset + duration) %>%
+      arrange(onset) %>%
+      dplyr::mutate(
+        # The section below written first uses these column names...
+        block_num = 1:n(),
+        mean_onset = onset,
+        mean_offset = offset,
+        part_id = str_extract(file_name, "blast\\S+[:digit:]{3}"),
+        run = str_extract(file_name, "(?<=_run-0)[:digit:]{1}"),
+        task = str_extract(file_name, "asl|vsl")
+      ) 
+    
+    matched_TS <- 
+      aslTS %>%
+      filter(part_id %in% unique(mean_onset$part_id)) %>%
+      filter(run %in% unique(mean_onset$run))
+    
+    if(length(as.character(matched_TS$file_path)) == 1) {
+      ts <- read_tsv(as.character(matched_TS$file_path))
+  
+      ts <- 
+        ts %>%
+        mutate(part_id = str_extract(file_name, "blast\\S+[:digit:]{3}"),
+               run = str_extract(file_name, "(?<=_run-0)[:digit:]{1}"),
+               task = str_extract(file_name, "asl|vsl"),
+               source = as.character(matched_TS$file_path)) %>%
+        dplyr::mutate(stim_time = 0:(n()-1)) %>%
+        dplyr::mutate(stim_time = stim_time*0.8)
+      
+      ts_block <- 
+        ts %>%
+        dplyr::mutate(block_num = ifelse(stim_time < mean_onset[which(mean_onset$block_num == 1),]$mean_offset & stim_time > mean_onset[which(mean_onset$block_num == 1),]$mean_onset, 1, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 2),]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 2),]$mean_offset, 2, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 3),]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 3),]$mean_offset, 3, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 4),]$mean_onset  & stim_time < mean_onset[which(mean_onset$block_num == 4),]$mean_offset, 4, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 5), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 5), ]$mean_offset, 5, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 6), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 6), ]$mean_offset, 6, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 7), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 7), ]$mean_offset, 7, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 8), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 8), ]$mean_offset, 8, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 9), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 9), ]$mean_offset, 9, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 10), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 10), ]$mean_offset, 10, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 11), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 11), ]$mean_offset, 11, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 12), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 12), ]$mean_offset, 12, NA))))))))))))) %>%
+        dplyr::select(part_id, task, run, stim_time, block_num, framewise_displacement, source) 
+      
+      ts_block <- 
+        merge(ts_block, mean_onset, by = c("part_id", "task", "run", "block_num"), all.x = T) %>%
+        arrange(stim_time)
+      }
+    }
+    return(ts_block)
+}
 
-# Calculate stimuli time stamps in the timeseries for children ASL data
-aslTP <-
-  SEL %>%
-  distinct(.) %>%
-  filter(task == "asl") %>%
-  # arrange() %>%
-  group_by(file_name) %>%
-  dplyr::mutate(stim_time = 0:(n()-1)) %>%
-  dplyr::mutate(stim_time = stim_time*0.8) %>%
-  ungroup()
+eveTS <- lapply(eveAll, extract_asl_outlier)
 
-head(aslTP)
-
-# Get event files from ASL to get a rough estimate on which block corresponds to which timepoint
-eveFile <- 
-  list.files("/Volumes/data/projects/blast/data/derivatives/event_files/children_new", 
-              pattern = "sub-blastc\\S+(asl)_run-\\S+_events.tsv$", full.names = T)
-
-eveFileAd <- 
-   list.files("/Volumes/data/projects/blast/data/derivatives/event_files/adults_new", 
-                pattern = "sub-blasta\\S+(asl)_run-\\S+_events.tsv$", full.names = T)
-
-eveFile <- append(eveFile, eveFileAd)
-
-eveFile_df <- list()
-eveFile_df <- lapply(eveFile, read_tsv)
-
-
-eveFileL <- do.call(dplyr::bind_rows, eveFile_df)
-
-eveFileL$part_id <- str_extract(eveFileL$file_name, "blast\\S+[:digit:]{3}")
-
-eveFileL$run <- str_extract(eveFileL$file_name, "(?<=run-)[:digit:]{2}")
-
-eveFileL$task <- str_extract(eveFileL$file_name, "(?<=task-)\\S+(?=_run)")
+sl_eveTS <- do.call(dplyr::bind_rows, eveTS)
 ```
 
-# TO DO: get the actual resampled stimuli by 0.8 fMRI timepoints; 
+
 # TO DO: Should not have anyone whose onset is actually negative check those people
-# Get a rough estimate of block onset and offset times for ASL tasks
 ```{r}
-# aslEVE <- merge(aslTP, unique(eveFileL[,-which(names(eveFileL) %in% c("file_name", "orig_path", "task"))]), by = c("part_id", "run"), all.x = T)
-
-
 # Should not have anyone whose onset is actually negative check those people
 negOnset <- 
-  eveFileL %>%
+  sl_eveTS %>%
   filter(onset < 0) %>%
   dplyr::select(part_id, run, task, file_name) %>%
   distinct(.)
 
 write.csv(negOnset, "/Users/jojohu/Downloads/negOnset.csv", row.names = F)
-
-# Get a rough estimate of how long each mini block is
-eveFileL %>%
-  filter(duration > 0) %>%
-  group_by(task, stimcond) %>%
-  dplyr::summarise(mean_duration = median(duration, na.rm = T))
-
-# Get a rough estimate of each mini block's onset and offset
-mean_onset <- 
-  eveFileL %>%
-  filter(onset > 0) %>%
-  dplyr::mutate(offset = onset + duration) %>%
-  group_by(file_name) %>%
-  arrange(file_name, onset) %>%
-  dplyr::mutate(block_num = 1:n()) %>%
-  group_by(block_num) %>%
-  dplyr::summarise(mean_onset = median(onset, na.rm = T), mean_offset = median(offset, na.rm = T)) %>%
-  # Check why there are participants with 24 blocks
-  filter(block_num < 13)
-
-print(mean_onset)
-
-mean_onset[which(mean_onset$block_num == 1), "mean_onset"]
-```
-
-# Extract block information for timeseries through ASL event files
-```{r}
-# Assume that each participant is mini block of stimuli + rest + mini block of stimuli + rest ...
-aslTP_block <- 
-  aslTP %>%
-  group_by(file_name) %>%
-  dplyr::mutate(block = ifelse(stim_time < mean_onset[which(mean_onset$block_num == 1),]$mean_offset & stim_time > mean_onset[which(mean_onset$block_num == 1),]$mean_onset, 1, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 2),]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 2),]$mean_offset, 2, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 3),]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 3),]$mean_offset, 3, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 4),]$mean_onset  & stim_time < mean_onset[which(mean_onset$block_num == 4),]$mean_offset, 4, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 5), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 5), ]$mean_offset, 5, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 6), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 6), ]$mean_offset, 6, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 7), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 7), ]$mean_offset, 7, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 8), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 8), ]$mean_offset, 8, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 9), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 9), ]$mean_offset, 9, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 10), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 10), ]$mean_offset, 10, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 11), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 11), ]$mean_offset, 11, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 12), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 12), ]$mean_offset, 12, NA))))))))))))) %>%
-  dplyr::select(part_id, task, run, stim_time, block, framewise_displacement) 
-
-eveFileL_block <- 
-  eveFileL %>%
-  distinct(.) %>%
-  group_by(file_name) %>%
-  arrange(file_name, onset) %>%
-  dplyr::mutate(block = 1:n())
-  
 ```
 
 
 # check these ID's ASL event files; why are there more than 12 blocks
+Perhaps because their run was administered twice during the scan. Remove this run from all analyses completely as it unclear what the bids file actually capture...
 ```{r}
-eveFileL_block %>%
+
+sl_eveTS %>%
   group_by(file_name, run) %>%
-  dplyr::summarise(max_block = max(block)) %>%
+  dplyr::summarise(max_block = max(block_num)) %>%
   filter(max_block > 12)
 
-eveFileL_block %>%
-  filter(part_id%in% c("blastc168", "blastc520"))
+
+
+# sl_eveTS %>%
+#   filter(part_id%in% c("blastc168", "blastc520"))
 ```
 
 
-# Plot motion outliers for ASL based on stimuli and condition
+# Mark motion outliers for ASL based on Run
 ```{r}
 library(ggplot2)
 
-aslTP_block <- 
-  merge(aslTP_block, eveFileL_block[,c("part_id", "run", "task", "block", "onset", "stimcond", "stimuli", "condition")], all.x = T) %>%
-  arrange(file_name, stim_time)
-
-
 aslTP_outlier <- 
-  aslTP_block %>%
-  filter(block < 12) %>%
+  sl_eveTS %>%
+  filter(block_num < 13) %>%
+  filter(task == "asl") %>%
+  filter(!is.na(block_num)) %>%
   mutate(motion_outlier_2mm = ifelse(framewise_displacement > 2, 1, 0)) %>%
-  group_by(part_id, task, stimcond, stimuli, condition) %>%
-  filter(!is.na(stimcond)) %>%
+  group_by(part_id, task, run, source) %>%
   dplyr::summarise(outlier_sum = sum(motion_outlier_2mm) , n = n()) %>%
-  mutate(perc_outlier = outlier_sum/n) %>%
-  mutate(asl_outlier = ifelse(perc_outlier > 0.3, 1, 0))
+  mutate(fraction_loss = outlier_sum/n) %>%
+  mutate(remove = ifelse(fraction_loss > 0.3, 1, 0)) %>%
+  mutate(source = ifelse(str_detect(source, "edit"), "edit", "no_edit")) %>%
+  mutate(part_id = paste0("sub-", part_id)) %>%
+  dplyr::select(task, run, part_id, fraction_loss, remove, source)
 
-aslTP_outlier %>%
-  filter(asl_outlier == 1)
 
-write.csv(aslTP_outlier, "/Users/jojohu/Downloads/aslTP_outlier.csv", row.names = F)
-
-aslTP_block %>%
-  mutate(group = str_extract(part_id, "(blasta|blastc)")) %>%
-  mutate(motion_outlier_2mm = ifelse(framewise_displacement > 2, 1, 0)) %>%
-  group_by(part_id, group, stimcond) %>%
-  filter(!is.na(stimcond)) %>%
-  dplyr::summarise(outlier_sum = sum(motion_outlier_2mm) , n = n()) %>%
-  mutate(perc_outlier = outlier_sum/n) %>%
-  ggplot(aes(x= perc_outlier)) +
-  geom_histogram(color="black", fill="white") +
-  facet_grid(~group+stimcond)
+write.csv(aslTP_outlier, "/Volumes/data/projects/blast/data/derivatives_new/subject_list/aslTP_outlier.csv", row.names = F)
 ```
 
-# Check the Alice File event files to make sure all have normal onsets 
-# To Do: move these to the event file scripts
+
+
+```{r}
+aslTP_outlier %>%
+  mutate(group = str_extract(part_id, "(blasta|blastc)")) %>%
+  ggplot(aes(x= run, y = fraction_loss)) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+  labs(x = "run",  # Change x-axis label
+       y = "fraction data loss") +
+  facet_grid(~group)
+```
+
+
+# IDs lists with motion outlier percentage
+```{r}
+# TO DO: compile all demographic data for BLAST in lab participants
+tdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - TD.csv")
+
+tdID$ID <- str_remove_all(tdID$ID, "_")
+
+setdiff(tdID$ID, aslTP_outlier$part_id)
+# write.csv(lossP[which(lossP$part_id %in% tdID$ID),], "/Users/jojohu/Downloads/gc_td.csv")
+```
+
+
+# Read in event files of language localizer task
 ```{r}
 aliceEveFile <- 
   list.files("/Volumes/data/projects/blast/data/derivatives/event_files/alice_localizer", 
               pattern = "sub-\\S+(langloc)_run-\\S+_events.tsv$", full.names = T)
 
-aliceEveFile_df <- list()
-aliceEveFile_df <- lapply(aliceEveFile, read_tsv)
+read_tsv1 <- 
+  function(file) {
+    orig_path <- file
+    
+    file_name <- basename(file)
+    
+    file <- read.csv(file,  sep ="\t", stringsAsFactors = F, header = T)
+    
+    if(nrow(file) > 0){
+      file[,c("file_name")] <- file_name
+      file[,c("orig_path")] <- orig_path
+      file$part_id <- str_extract(file$file_name, "blast\\S+[:digit:]{3}")
+      file$run <- str_extract(file$file_name, "(?<=run-0)[:digit:]{1}")
+      file$task <- str_extract(file$file_name, "(?<=task-)\\S+(?=_run)")
+    }
+    
+    return(file)
+    }
+```
 
 
-aliceEveFileL <- do.call(dplyr::bind_rows, aliceEveFile_df)
+```{r}
+extract_langloc_outlier <- function(df) {
+  
+  eveDF <- read_tsv1(df)
 
-aliceEveFileL$part_id <- str_extract(aliceEveFileL$file_name, "blast\\S+[:digit:]{3}")
+  # If the short event file is not empty:
+  if (nrow(eveDF) > 0) {
+    
+    mean_onset <-
+      eveDF %>%
+      filter(onset > 0 | onset == 0) %>%
+      dplyr::mutate(offset = onset + duration) %>%
+      arrange(onset) %>%
+      dplyr::mutate(
+        # The section below written first uses these column names...
+        block_num = 1:n(),
+        mean_onset = onset,
+        mean_offset = offset
+      )
+    
+    matched_TS <- 
+      langlocTS %>%
+      filter(part_id %in% unique(mean_onset$part_id)) %>%
+      filter(run %in% unique(mean_onset$run))
+    
+    if(length(as.character(matched_TS$file_path)) == 1) {
+      ts <- read_tsv(as.character(matched_TS$file_path))
+      
+      ts <- 
+        ts %>%
+        mutate(part_id = str_extract(file_name, "blast\\S+[:digit:]{3}"), 
+               run = str_extract(file_name, "(?<=_run-0)[:digit:]{1}"),
+               task = str_extract(file_name, "langloc"),
+               source = matched_TS$file_path) %>%
+        dplyr::mutate(stim_time = 0:(n()-1)) %>%
+        dplyr::mutate(stim_time = stim_time*0.6)
+      
+      ts_block <- 
+        ts %>%
+        dplyr::mutate(block_num = ifelse(stim_time < mean_onset[which(mean_onset$block_num == 1),]$mean_offset & stim_time > mean_onset[which(mean_onset$block_num == 1),]$mean_onset, 1, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 2),]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 2),]$mean_offset, 2, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 3),]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 3),]$mean_offset, 3, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 4),]$mean_onset  & stim_time < mean_onset[which(mean_onset$block_num == 4),]$mean_offset, 4, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 5), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 5), ]$mean_offset, 5, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 6), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 6), ]$mean_offset, 6, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 7), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 7), ]$mean_offset, 7, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 8), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 8), ]$mean_offset, 8, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 9), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 9), ]$mean_offset, 9, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 10), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 10), ]$mean_offset, 10, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 11), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 11), ]$mean_offset, 11, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 12), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 12), ]$mean_offset, 12, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 13), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 13), ]$mean_offset, 13, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 14), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 14), ]$mean_offset, 14, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 15), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 15), ]$mean_offset, 15, ifelse(stim_time > mean_onset[which(mean_onset$block_num == 16), ]$mean_onset & stim_time < mean_onset[which(mean_onset$block_num == 16), ]$mean_offset, 16, NA))))))))))))))))) %>%
+        dplyr::select(part_id, task, run, stim_time, block_num, framewise_displacement, source) 
+      
+      ts_block <- 
+        merge(ts_block, mean_onset, by = c("part_id", "task", "run", "block_num"), all.x = T) %>%
+        arrange(stim_time)
+    
+    }
+    return(ts_block)
+  }
+}
 
-aliceEveFileL$run <- str_extract(aliceEveFileL$file_name, "(?<=run-)[:digit:]{2}")
+langTS_eve <- lapply(aliceEveFile, extract_langloc_outlier)
+langTS_eveL <- do.call(dplyr::bind_rows, langTS_eve)
 
-aliceEveFileL$task <- str_extract(aliceEveFileL$file_name, "(?<=task-)\\S+(?=_run)")
-
+# Double check that there is no lang loc event files with negative onsets
 # Should be zero
-aliceEveFileL %>%
+langTS_eveL %>%
   group_by(part_id, file_name) %>%
   mutate(min_onset = min(onset)) %>%
   filter(min_onset < 0)
+
+# Double check that there is lang loc event files that have more than 16 blocks
+langTS_eveL %>%
+  filter(block_num > 16)
+```
+
+
+
+# Mark motion outliers for LangLoc based on Run
+```{r}
+library(ggplot2)
+
+langlocTP_outlier <- 
+  langTS_eveL %>%
+  # filter(block_num < 17) %>%
+  filter(task == "langloc") %>%
+  filter(!is.na(block_num)) %>%
+  mutate(motion_outlier_2mm = ifelse(framewise_displacement > 2, 1, 0)) %>%
+  group_by(part_id, task, run, source) %>%
+  dplyr::summarise(outlier_sum = sum(motion_outlier_2mm) , n = n()) %>%
+  mutate(fraction_loss = outlier_sum/n) %>%
+  mutate(remove = ifelse(fraction_loss > 0.3, 1, 0)) %>%
+  mutate(source = ifelse(str_detect(source, "edit"), "edit", "no_edit")) %>%
+  dplyr::select(task, run, part_id, fraction_loss, remove, source) %>%
+  mutate(part_id = paste0("sub-", part_id)) %>%
+  dplyr::select(task, run, part_id, fraction_loss, remove, source)
+
+write.csv(langlocTP_outlier, "/Volumes/data/projects/blast/data/derivatives_new/subject_list/langlocTP_outlier.csv", row.names = F)
 ```
 
 
@@ -445,8 +499,25 @@ aliceEveFileL %>%
 
 
 
-TO DO: Move out the freesurfer editted data from the original freesurfer/ fmriPrep data folder (very slow)
+
+# Plotting data loss
 ```{r}
+aslTP_outlier %>%
+  mutate(group = str_extract(part_id, "(blasta|blastc)")) %>%
+  ggplot(aes(x= run, y = fraction_loss)) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+  labs(x = "run",  # Change x-axis label
+       y = "fraction data loss") +
+  facet_grid(~group)
+```
+
+
+TO DO: Move out the freesurfer editted data from the original freesurfer/ fmriPrep data folder (very slow)
+```{r, eval = F}
 edittedASLID <- 
   SEL %>%
   filter(task == "asl") %>%
@@ -461,8 +532,134 @@ which(edittedASLID$part_id %in% unique(aslSE_df$part_id))
 
 
 TO DO: Move in the freesurfer editted data to the original freesurfer/ fmriPrep data folder
-```{r}
+```{r, eval = F}
 
 
 ```
 
+
+# Not needed for this level of analysis
+```{r, eval = F}
+# Get the actual resampled stimuli by 0.8 fMRI timepoints
+    # Do some transformations to the event file first
+    eve <-
+      df %>%
+      # caculate the interstimulus interval between the current stimulus and the previous stimulus
+      mutate(isi = append(0, diff(onset))) %>%
+      # reset the onset from 0 seconds
+      mutate(timepoint = cumsum(isi),
+             source = "event_file")
+    
+    
+    # Create data frames for fMRI event files
+    # Calculate the number of rows based on the whole duration of the run
+    row_num <- (max(eve$onset) - min(eve$onset)) * (1 / 0.8)
+    round_up <- ceiling(row_num)
+    # Create a new dataframe for new event files
+    new_eve <-
+      data.frame(matrix(1, ncol = 1, nrow = round_up)) %>%
+      # Create a column with fMRI time points (first time point should be 0)
+      mutate(timepoint = append(0, seq(2:round_up) * 0.8),
+             source = "fmri") %>%
+      dplyr::select(timepoint, source)
+    
+    # Make fMRI event files
+    # combine the event file timepoints with the fMRI timepoints
+    allEve <-
+      dplyr::bind_rows(eve, new_eve) %>%
+      arrange(timepoint, source) %>%
+      mutate(change_source = source)
+    
+    # Deal with the last timepoint
+    # If the last timepoint is from the event file, then change it to a fMRI timepoint
+    if (tail(allEve, 1)[, "source"] == "event_file") {
+      allEve[nrow(allEve), "change_source"] <- "fmri"
+      # Just to double check that the right row (last row) is changed
+      which(allEve$source != allEve$change_source) == nrow(allEve)
+    } else if (tail(allEve, 1)[, "source"] == "fmri") {
+      # If the last timepoint is a fMRI timepoint, then get rid of it as the last timepoint should be a event file timepoint
+      allEve <- allEve[-nrow(allEve), ]
+    }
+    
+    # Now fill in the rows of the fMRI timepoints
+    library(zoo)
+    
+    allEve <- na.locf(allEve)
+    
+    # Extract only the fMRI timepoints and select the only relevant columns
+    fmriEve <-
+      allEve %>%
+      filter(change_source == "fmri")
+    
+    # If the condition in the current trial does not = the condition in the previous trial, then this current trial is the first trial of the block
+    fmriEve[, "prev_cond"] <-
+      append("place_holder", fmriEve$condition[1:(length(fmriEve$condition) -
+                                                    1)])
+    # If the condition in the current trial does not = the condition in the next trial, then this current trial is the last trial of the block
+    fmriEve[, "next_cond"] <-
+      append(fmriEve$condition[2:length(fmriEve$condition)], "place_holder")
+    
+    # Add mini block numbers
+    fmriEve[which(fmriEve$condition != fmriEve$prev_cond), "mini_block"] <-
+      seq(1:nrow(fmriEve[which(fmriEve$condition != fmriEve$prev_cond), ]))
+    
+    library(dplyr)
+    library(tidyr)
+    fmriEve <-
+      fmriEve %>%
+      tidyr::fill(mini_block, .direction = "down")
+    
+    # If the condition in the current trial does not = the condition in the previous trial, then this current trial is the first trial of the block
+    first_trials <-
+      fmriEve[which(fmriEve$condition != fmriEve$prev_cond), c("onset", "name", "condition", "mini_block", "stimuli")]
+    
+    # If the condition in the current trial does not = the condition in the next trial, then this current trial is the last trial of the block
+    last_trials <-
+      fmriEve[which(fmriEve$condition != fmriEve$next_cond), c("onset", "name", "condition", "mini_block", "stimuli")]
+    
+    # Get the duration of each block
+    colnames(last_trials)[which(colnames(last_trials) == "onset")] <-
+      "onset_last"
+    
+    short_eve <-
+      merge(first_trials,
+            last_trials,
+            by = c("condition", "name", "mini_block", "stimuli"))
+    
+    short_eve <-
+      short_eve %>%
+      arrange(onset)
+    
+    short_eve$duration <- short_eve$onset_last - short_eve$onset
+    
+    # Get rid of trailing white space and only keep the random
+    short_eve$condition <- gsub(" ", "", short_eve$condition)
+    
+    short_eve$stimcond <-
+      paste0(short_eve$stimuli, short_eve$condition)
+    
+    short_eve[which(short_eve$stimcond == "restB"), "stimcond"] <-
+      "rest"
+    
+    if (nrow(fmriEve[complete.cases(short_eve),]) != nrow(fmriEve)) {
+      print(paste(this_file_name, "this file has NA"))
+      print(short_eve)
+    }
+    
+    # Get block onset and offset times for ASL tasks
+    # Get how long each mini block is
+    # Get each mini block's onset and offset
+    mean_onset <-
+      short_eve %>%
+      filter(onset > 0 | onset == 0) %>%
+      dplyr::mutate(offset = onset + duration) %>%
+      arrange(onset) %>%
+      dplyr::mutate(
+        block_num = 1:n(),
+        # The section below written first uses these column names...
+        mean_onset = onset,
+        mean_offset = offset
+      ) %>%
+      # TO DO: Check why there are participants with 24 blocks
+      filter(block_num < 13)
+```

@@ -11,14 +11,13 @@ output: html_document
 input_path <- "/Volumes/data/projects/blast/data/derivatives/event_files/adults_new"
 output_path <- "/Volumes/data/projects/blast/data/derivatives/event_files/adults_new/"
 
-library(stringr)
-library(dplyr)
-
 longeve <- list.files(path = input_path,
                        pattern = "*\\.txt$", full.names = T)
 
 # Function to clean the raw event files
 clean_event_file <- function(df) {
+  # Set up a variable
+  weird_event <- NA
   
   file_name <- basename(df)
   file_name <- str_extract(file_name, "\\S+(?=.txt?)")
@@ -71,7 +70,40 @@ clean_event_file <- function(df) {
     
     short_eve <- 
       short_eve %>%
-      arrange(onset)
+      # Must arrange by mini block order first, and then by stimuli onset, because some event files have more than 12 blocks; and then the onset of the 13th block resets and starts again
+      arrange(mini_block, onset)
+    
+    # If an event file has 24 blocks, that means the run was administered twice, only keep the later 24 blocks
+    if(max(short_eve$mini_block) > 12) {
+      # Get where the run was administered twice in the event file
+      print(short_eve)
+      
+      first_usable_block <-
+        short_eve %>%
+        mutate(diff = onset - lag(onset))  %>%
+        filter(diff < 0) %>%
+        dplyr::select(mini_block) 
+      
+      # Save the later blocks
+      if (nrow(first_usable_block) == 1) {
+        short_eve <-
+          short_eve %>%
+          filter(mini_block > first_usable_block$mini_block | mini_block == first_usable_block$mini_block) %>%
+          mutate(mini_block = seq(1:nrow(.)))
+
+      } else if (nrow(first_usable_block) != 1) {
+        
+        print("This event file is weird:")
+        print(short_eve)
+        # Deal with weird event files case by case if needed
+      
+      }
+    }
+    
+    # Cleaned event files should have 12 blocks only
+    if(max(short_eve$mini_block) != 12) {
+      weird_event <- short_eve
+    }
     
     short_eve$duration <- short_eve$onset_last - short_eve$onset
     
@@ -95,6 +127,7 @@ clean_event_file <- function(df) {
     }
     write.table(short_eve, paste0(output_path, this_file_name), sep='\t', row.names = F)
   }
+  return(weird_event)
 }
 
 # Run the functino to clean the raw event files; No need to save the output of the function as files are saved in the function; place_holder just to prevent printing of lapply
@@ -114,27 +147,29 @@ csvFile <- list.files(path = input_path2,
 
 validFile <- list()
 
-for (i in 1:length(csvFile)) {
+read_behdata <- function(df) {
+  fileTemp <- read.csv(df, stringsAsFactors = F)
   
-  file_name <- basename(csvFile[i])
-  orig_file <- read.csv(csvFile[i], stringsAsFactors = F)
-  
-  if (nrow(orig_file) == 0) {
-    invalidFile <- orig_file 
-    } else if (nrow(orig_file) > 0) {
-      orig_file[,c("file_name")] <- file_name
-      orig_file[,c("repetition")] <- as.character(orig_file[,c("repetition")])
-      orig_file[,c("frameRate")] <- as.character(orig_file[,c("frameRate")])
-      orig_file[,c("PartID")] <- as.character(orig_file[,c("PartID")])
-      
-      if(length(which(colnames(orig_file) %in% "ltarget")) > 0) {
-        orig_file[,c("ltarget")] <- as.character(orig_file[,c("ltarget")])
+  if(nrow(fileTemp) > 0) {
+    # Corrected IDs in blast_a_026_auditory_2.csv and blast_a_026_auditory_3.csv files due to wrong IDs used during MRI administration
+    # if(basename(df) == "blast_a_026_auditory_2.csv" | basename(df) == "blast_a_026_auditory_3.csv") {
+    #   print(df)
+    # }
+    
+    fileTemp[,c("file_name")] <- basename(df)
+    fileTemp$repetition <- as.character(fileTemp$repetition)
+    fileTemp$frameRate <- as.character(fileTemp$frameRate)
+    fileTemp$PartID <- as.character(fileTemp$PartID)
+    
+    if(length(which(colnames(fileTemp) %in% "ltarget")) > 0) {
+        fileTemp[,c("ltarget")] <- as.character(fileTemp[,c("ltarget")])
       }
-      
-      edit_file <- orig_file
-      validFile[[i]] <- edit_file
-    }
+  }
+  return(fileTemp)
 }
+
+validFile <- lapply(csvFile, read_behdata)
+validFile <- validFile[lapply(validFile,nrow)>0]
 
 validFile <- do.call(dplyr::bind_rows, validFile)
 
@@ -147,6 +182,11 @@ dateRun$year_month_date <- str_extract(dateRun$date, "\\S+_\\S+_\\S+(?=_)")
 dateRun$date_formatted <- as.Date(dateRun$year_month_date, "%Y_%b_%d")
 
 dateRun$time <- sub('.*_', '', dateRun$date)
+
+# Should return zero
+dateRun %>%
+  filter(str_detect(PartID, "blast_c"))
+
 
 # Correct wrong naming in the raw data file
 # dateRun[which(dateRun$PartID == "blast_c_0612"),]$PartID <- "blast_c_061"
@@ -161,49 +201,48 @@ checkOrder <-
   dateRun %>%
   dplyr::select(PartID, task, date_formatted, time, Run) %>%
   dplyr::distinct(.) %>%
-  dplyr::mutate(date_formatted = as.Date(date_formatted),
+  mutate(date_formatted = as.Date(date_formatted),
          Run = as.factor(Run)) %>%
   arrange(PartID, task, date_formatted, time) %>%
-  dplyr::distinct(PartID, task, Run, .keep_all = TRUE) %>%
+  distinct(PartID, task, Run, .keep_all = TRUE) %>%
   group_by(PartID, task) %>%
   dplyr::filter(n() == 4) %>%
-  dplyr::summarise(run = toString(Run)) %>%
+  summarise(run = toString(Run)) %>%
   ungroup() %>%
   filter(run != "1, 2, 3, 4" & run!= "3, 4, 1, 2")  %>%
-  dplyr::mutate(notes = "This is a subject with irregularly-ordered runs. Please check their runsheet to see if the runs were indeed ordered this way and leave notes on this spreadsheet.")
+  mutate(notes = "This is a subject with irregularly-ordered runs. Please check their runsheet to see if the runs were indeed ordered this way and leave notes on this spreadsheet.")
   
 duplicatedRun <-
   dateRun %>%
   dplyr::select(PartID, task, date_formatted, time, Run) %>%
   dplyr::distinct(.) %>%
-  dplyr::mutate(date_formatted = as.Date(date_formatted),
+  mutate(date_formatted = as.Date(date_formatted),
          Run = as.factor(Run)) %>%
   arrange(PartID, task, date_formatted, time) %>%
   group_by(PartID, task, Run) %>%
   filter(n() > 1) %>%
   distinct(PartID, .keep_all = F) %>%
   dplyr::rename(run = Run) %>%
-  dplyr::mutate(notes = "This is the duplicated run in the in_scanner_behavioral data folder. Please remove the corresponding incomplete run from the behavioral and imaging data (bids and fmriprep).")
+  mutate(notes = "This is the duplicated run in the in_scanner_behavioral data folder. Please remove the corresponding incomplete run from the behavioral and imaging data (bids and fmriprep).")
 
 checkRun <- rbind(as.data.frame(duplicatedRun), as.data.frame(checkOrder))
 
 write.csv(checkRun, "/Users/jojohu/Documents/Qlab/fmri/data/adult/manual_check_run.csv")
 ```
 
-## Check what bids data exsit
+## Check what bids data exsitf
 ```{r}
 bidsEvent <-
-  list.files(path = "/Volumes/data/projects/blast/data/bids",
-           pattern = "sub-blasta", recursive = F, full.names = T)
+  list.files(path = "/Volumes/data/projects/blast/data/bids", pattern = "blast_*", recursive = F, full.names = T)
 
-bidsEvent <-
-  list.files(path = paste0(bidsEvent, "/func"),
-           pattern = "*\\_bold.nii.gz$", recursive = F, full.names = T)
+bidsEvent <- paste0(bidsEvent, "/func")
 
+bidsEvent <- list.files(path = bidsEvent, pattern = "*\\_bold.nii.gz$", recursive = F, full.names = T)
 
 bidsBold <- as.data.frame(bidsEvent)
 
 bidsEvent <- as.data.frame(bidsEvent)
+
 bidsEvent$PartID <- str_extract(bidsEvent$bidsEvent, "(?<=func/sub-blast(c|a))\\S+(?=_task)")
 
 if(length(which(str_detect(bidsEvent$bidsEvent, "blastc"))) > 0) {
@@ -226,6 +265,18 @@ if (length(-which(str_detect(bidsEvent$bidsEvent, "incomplete"))) > 0) {
   bidsEvent <- bidsEvent[-which(str_detect(bidsEvent$bidsEvent, "incomplete")),]
 }
 
+# Manually correct some run numbers. This is working backwards from missingEvent and missingPreprocess generated below. If we eventually find these bids or behavioral runs, will remove these lines below:
+
+# blast_a_057 Run 1 bids is partially completed and should be removed from bids data analyses
+bidsEvent <- bidsEvent[-which(bidsEvent$PartID == "blast_a_057" & bidsEvent$task == "auditory" & bidsEvent$Run == 1),]
+# blast_a_071 cannot hear Run 1; so run 1 bids is not usable; run 2 and 3 bids correspond to run 3 and 1 event files
+bidsEvent <- bidsEvent[-which(bidsEvent$PartID == "blast_a_071" & bidsEvent$task == "auditory" & bidsEvent$Run == 1),]
+# blast_a_008 is missing behavioral run 1, so removing run 1 from bids data analyses
+bidsEvent <- bidsEvent[-which(bidsEvent$PartID == "blast_a_008" & bidsEvent$task == "auditory" & bidsEvent$Run == 1),]
+# blast_a_001 Behavioral Log File run 2 has formatting problems, so removing run 2 from bids data analysis; not necessary because behavioral .csv files exist for all 4 runs
+# bidsEvent <- bidsEvent[-which(bidsEvent$PartID == "blast_a_001" & bidsEvent$task == "auditory" & bidsEvent$Run == 2),]
+
+
 bidsEvent <-
   bidsEvent %>%
   arrange(PartID, task, Run) %>%
@@ -236,8 +287,58 @@ bidsEvent <-
 ```
 
 
+# Check all the order of the bids run based on Acquisition Time .json files
+# All bids should be in an ascending order
+```{r}
+# Read in bids json files
+bidsJson <-
+  list.files(path = "/Volumes/data/projects/blast/data/bids", pattern = "blast_*", recursive = F, full.names = T)
+
+bidsJson <- paste0(bidsJson, "/func")
+
+bidsJson <- list.files(path = bidsJson, pattern = "*\\_bold.json$", recursive = F, full.names = T)
+
+library("jsonlite")
+# Extract acquisition time
+readTime <- function(df) {
+  tempJSON <- fromJSON(df, flatten=TRUE)
+  acq_time <- as.POSIXlt(tempJSON$AcquisitionTime,format="%H:%M:%S")
+  
+  acq <- as.data.frame(acq_time)
+  
+  acq$file_name <- basename(df)
+  
+  return(acq)
+}
+
+jsonDF <- lapply(bidsJson, readTime)
+jsonDFL <- do.call(dplyr::bind_rows, jsonDF)
+
+jsonDFL <-
+  jsonDFL %>%
+  mutate(PartID = str_extract(file_name, "blast\\S+[:digit:]{3}"), 
+         Run = str_extract(file_name, "(?<=_run-0)[:digit:]{1}"),
+         task = str_extract(file_name, "langloc|asl|vsl|rest")) 
+
+# Check that the timing of the 4 bids runs (1, 2, 3, 4) should be in an ascending order. Output should be zero:
+jsonDFL %>%
+  filter(task == "asl" | task == "vsl") %>%
+  arrange(PartID, task, acq_time) %>%
+  group_by(PartID, task) %>%
+  mutate(Run = as.numeric(as.character(Run))) %>%
+  mutate(diff = Run - lag(Run)) %>%
+  filter(diff > 1)
+  
+```
+
+
 ## Check the run orders that do not match between preprocessed data and in-scanner-behavioral data
 ```{r}
+# Manually correct some run numbers. This is working backwards from missingEvent and missingPreprocess generated below. If we eventually find these bids or behavioral runs, will remove these lines below:
+# Bids file run 4 are missing for these two IDs, so get rid of the behavioral run:
+dateRun <- dateRun[-which(dateRun$PartID == "blast_a_015" & dateRun$task == "auditory" & dateRun$Run == 4),] 
+dateRun <- dateRun[-which(dateRun$PartID == "blast_a_026" & dateRun$task == "auditory" & dateRun$Run == 4),]
+
 runOnly <-
   dateRun %>%
   dplyr::select(PartID, task, date_formatted, time, Run) %>%
@@ -247,9 +348,24 @@ runOnly <-
   dplyr::select(PartID, task, Run) %>%
   dplyr::distinct(.) %>%
   group_by(PartID, task) %>%
-  dplyr::summarise(run_order = toString(Run)) %>%
+  summarise(run_order = toString(Run)) %>%
   ungroup()
+```
 
+
+
+```{r}
+# Already found all of these csv files: blast_a_012 is not missing any event files, but just missing .csv files.
+# runOnly[which(runOnly$PartID == "blast_a_012" & runOnly$task == "auditory"), "run_order"] <- "1, 2, 3, 4"
+# blast_a_026 is not missing any event files, but just missing .csv files
+# runOnly[which(runOnly$PartID == "blast_a_026" & runOnly$task == "auditory"), "run_order"] <- "1, 2, 3, 4"
+# # blast_a_054 is not missing any event files, but just missing .csv files
+# runOnly[-which(runOnly$PartID == "blast_a_054" & runOnly$task == "auditory"), "run_order"] <- "3, 4, 1, 2"
+```
+
+
+
+```{r}
 runOnly <- merge(runOnly, unique(bidsEvent), by = c("PartID", "task"), all.x = T)
 
 runOnly$event_count <- str_count(runOnly$run_order, "[0-9]")
@@ -270,11 +386,14 @@ mismatchRun <-
   filter(event_count != bids_count)
 
 
+
 write.csv(missingEvent, "/Users/jojohu/Documents/Qlab/fmri/data/adult/missing_event_file.csv")
 write.csv(missingPreprocessed, "/Users/jojohu/Documents/Qlab/fmri/data/adult/missing_preprocessed.csv")
+write.csv(runOnly, "/Users/jojohu/Downloads/blast_dev_adult_event_run_order.csv", row.names = F)
 ```
 
-## Change event file names to match with actual imaging data sequence names; 
+
+## Change event file names to match with actual imaging data sequence names
 ```{r}
 # Only change event file names for those who have correct number of runs preprocessed
 changeRun <-
@@ -322,32 +441,114 @@ changeRun$basename <- basename(as.character(changeRun$eventFile))
 changeRun$eventFile <- as.character(changeRun$eventFile)
 changeRun$archive <- paste0("/Volumes/data/projects/blast/data/derivatives/event_files/adults_new/original_event_files/", changeRun$basename)
 
-print(changeRun)
-
-# Move original event files to a folder
 file.rename(as.character(changeRun$eventFile), changeRun$archive)
-
-splitOrder <- as.data.frame(do.call(rbind, str_split(changeRun$run_order, ", ")))
-
-colnames(splitOrder) <- c("run1_name", "run2_name", "run3_name", "run4_name")
-
-changeRun <- cbind(changeRun, splitOrder)
-
-changeRun[which(changeRun$Run == 1), "correctRun"] <- as.character(changeRun[which(changeRun$Run == 1),]$run1_name)
-changeRun[which(changeRun$Run == 2), "correctRun"] <- as.character(changeRun[which(changeRun$Run == 2),]$run2_name)
-changeRun[which(changeRun$Run == 3), "correctRun"] <- as.character(changeRun[which(changeRun$Run == 3),]$run3_name)
-changeRun[which(changeRun$Run == 4), "correctRun"] <- as.character(changeRun[which(changeRun$Run == 4),]$run4_name)
-
-changeRun$renameFile <- str_replace(changeRun$archive, "(?<=run-0)\\S{1}", changeRun$correctRun)
-
-changeRun$renameFile <- str_remove(changeRun$renameFile, "/original_event_files")
-
-print(changeRun)
-
-file.rename(changeRun$archive, changeRun$renameFile)
 ```
 
 
+## Change event file names for those who have matching number of behavioral runs and bids runs (all subjects' ASL data should have been matched before this section)
+```{r}
+changeRun1 <-
+  changeRun 
+  # filter(bids_count == 4)
+
+# Some subjects have more than 1 csv files for each run because the run was adminstered multiple times
+changeRun1 <-
+  changeRun1 %>%
+  group_by(PartID, task, Run) %>%
+  filter(row_number() == n())
+
+# Reorder the data based on behavioral run order and bids run order
+# Get behavioral run order
+splitOrder <- 
+  as.data.frame(do.call(rbind, str_split(str_pad(str_remove_all(changeRun1$run_order, ", "), 4, pad = "0", side = "right"), "")))
+
+colnames(splitOrder) <- c("run1_name", "run2_name", "run3_name", "run4_name")
+
+splitOrder <- as.data.frame(splitOrder)
+
+changeRun1 <- dplyr::bind_cols(changeRun1, splitOrder)
+
+# Put behavioral run order back to dataframe and reorder data
+changeRun1 <- 
+  changeRun1 %>%
+  mutate(behavioral_order = ifelse(Run == run1_name, 1, ifelse(Run == run2_name, 2, ifelse(Run == run3_name, 3, ifelse(Run == run4_name, 4, NA)))))
+
+changeRun1 <- 
+  changeRun1 %>%
+  arrange(PartID, task, behavioral_order)
+
+# Get bids run order
+uniqueBids <-
+  changeRun1 %>%
+  group_by(PartID, task) %>%
+  filter(row_number() == 1) %>%
+  dplyr::select(PartID, task, bids_run)
+
+changeRun1$bids_order <- unlist(str_split(uniqueBids$bids_run, ", "))
+
+# Check that the added bids order are correct. Bids runs are in ascending order, so:
+changeRun1 %>%
+  group_by(PartID, task) %>%
+  mutate(check_bids_order = seq(1:n())) %>%
+  filter(bids_order != check_bids_order)
+
+changeRun1$renameFile <- str_replace(changeRun1$archive, "(?<=run-0)\\S{1}", changeRun1$bids_order)
+changeRun1$renameFile <- str_remove(changeRun1$renameFile, "/original_event_files")
+```
+
+
+```{r}
+changeRun1 %>%
+  dplyr::select(PartID, Run, bids_order, archive, renameFile) %>%
+  head()
+
+file.rename(changeRun1$archive, changeRun1$renameFile)
+```
+
+## Remove the existing bids files first (If major changes have been made to the event files)
+```{r}
+bidsEvent <-
+  list.files(path = "/Volumes/data/projects/blast/data/bids", pattern = "sub-blast*", recursive = F, full.names = T)
+
+bidsEvent <- bidsEvent[which(str_detect(bidsEvent, "sub-blasta"))]
+
+bidsEvent <- paste0(bidsEvent, "/func")
+
+bidsEvent <- list.files(path = bidsEvent, pattern = "*\\_events.tsv$", recursive = F, full.names = T)
+
+bidsEvent <- as.data.frame(bidsEvent)
+
+bidsEvent$PartID <- str_extract(bidsEvent$bidsEvent, "(?<=func/sub-blast(c|a))\\S+(?=_task)")
+
+if(length(which(str_detect(bidsEvent$bidsEvent, "blastc"))) > 0) {
+  bidsEvent[which(str_detect(bidsEvent$bidsEvent, "blastc")), "PartID"] <-
+  paste0("blast_c_", bidsEvent[which(str_detect(bidsEvent$bidsEvent, "blastc")), "PartID"])
+}
+
+if(length(which(str_detect(bidsEvent$bidsEvent, "blasta"))) > 0) {
+  bidsEvent[which(str_detect(bidsEvent$bidsEvent, "blasta")), "PartID"] <-
+  paste0("blast_a_", bidsEvent[which(str_detect(bidsEvent$bidsEvent, "blasta")), "PartID"])
+}
+
+bidsEvent$task <- str_extract(bidsEvent$bidsEvent, "(?<=task-)\\S+(?=_run)")
+bidsEvent$task <- gsub("asl", "auditory", bidsEvent$task)
+bidsEvent$task <- gsub("vsl", "visual", bidsEvent$task)
+
+bidsEvent$Run <- str_extract(bidsEvent$bidsEvent, "(?<=_run-0)\\S+(?=_events.tsv)")
+
+if (length(-which(str_detect(bidsEvent$bidsEvent, "incomplete"))) > 0) {
+  bidsEvent <- bidsEvent[-which(str_detect(bidsEvent$bidsEvent, "incomplete")),]
+}
+
+aslEve <-
+  bidsEvent %>%
+  filter(task == "auditory")
+
+
+file.remove(as.character(aslEve$bidsEvent))
+
+# Manually correct some run numbers. This is working backwards from missingEvent and missingPreprocess generated below. If we eventually find these bids or behavioral runs, will remove these lines below:
+```
 
 
 # Put imaging files and event files into individual subject folders
@@ -368,6 +569,8 @@ event_from <- as.data.frame(event_from)
 event_from[,"event_from_short"] <- basename(as.character(event_from$event_from))
 
 event_to <- bidsBold
+
+event_to$bidsEvent <- as.character(event_to$bidsEvent)
 
 event_to[,"event_to_short"] <- str_extract(event_to$bidsEvent,
                                            "(?<=/func/)sub-\\S+(vsl|asl)_run-\\S+_bold.nii.gz$")
@@ -390,25 +593,69 @@ file.copy(event_to$event_from, file.path(event_to$event_to_path, basename(event_
           copy.mode = TRUE, 
           copy.date = TRUE)
 
-file.copy("/Volumes/data/projects/blast/data/bids/task-asl_bold.json", "/Volumes/data/projects/blast/data/derivatives/fmriprep/", 
+file.copy("/Volumes/data/projects/blast/data/bids/task-asl_bold.json", "/Volumes/data/projects/blast/data/derivatives_new/fmriprep/", 
           overwrite = F,
           copy.mode = TRUE, 
           copy.date = TRUE)
 
-file.copy("/Volumes/data/projects/blast/data/bids/task-vsl_bold.json", "/Volumes/data/projects/blast/data/derivatives/fmriprep/", 
+file.copy("/Volumes/data/projects/blast/data/bids/task-vsl_bold.json", "/Volumes/data/projects/blast/data/derivatives_new/fmriprep/", 
           overwrite = F,
           copy.mode = TRUE, 
           copy.date = TRUE)
 ```
 
 
+# Make sure no event file has over 12 blocks of stimuli. This section should be run here, because event files have already been moved into bids folders. 
+```{r}
+bidsEvent <-
+  list.files(path = "/Volumes/data/projects/blast/data/bids", pattern = "blast_*", recursive = F, full.names = T)
 
+bidsEvent <- paste0(bidsEvent, "/func")
 
+bidsEvent <- list.files(path = bidsEvent, pattern = "*\\_events.tsv$", recursive = F, full.names = T)
+
+readBidsEve <- function(df) {
+  
+    file_name <- basename(df)
+    
+    file <- read.csv(df,  sep ="\t", stringsAsFactors = F, header = T)
+    
+    if(nrow(file) > 0) {
+      file[,c("file_name")] <- file_name
+      file[,c("orig_path")] <- df
+    }
+   
+    return(file)
+    }
+
+bidsEventDF <- lapply(bidsEvent, readBidsEve)
+
+bidsEventDF <- bidsEventDF[lapply(bidsEventDF, nrow)>0]
+
+bidsEventDFL <- do.call(dplyr::bind_rows, bidsEventDF)
+
+# Check whether there are any event files that have more than 12 blocks; should return zero
+bidsEventDFL %>%
+  filter(str_detect(file_name, "asl")) %>%
+  filter(str_detect(file_name, "blasta")) %>%
+  dplyr::select(onset, duration, stimuli, condition, stimcond, file_name, orig_path) %>%
+  arrange(file_name) %>%
+  group_by(file_name) %>%
+  mutate(block_num = seq(1:n())) %>%
+  group_by(file_name) %>%
+  filter(max(block_num) > 12)
+
+# Onset < 0; not sure how to deal with theses; should return zero
+bidsEventDFL %>%
+  filter(str_detect(file_name, "asl")) %>%
+  dplyr::select(onset, duration, stimuli, condition, stimcond, file_name, orig_path) %>%
+  arrange(file_name) %>%
+  filter(onset < 0)
+```
+
+# Not needed anymore due to not using fitlins
 # Modify participant.tsv file for first-level analysis in fitlins with those subjects that have at least one event file and have matched preprocessed bids run and behavioral event file runs
 ```{r}
-part_tsv <-
-  read.csv("/Volumes/data/projects/blast/data/bids/participants.tsv",  sep ="\t", stringsAsFactors = F, header = T)
-
 part_id <- unique(str_extract(event_to$event_to_short, "sub-\\S+(?=_run)"))
 
 part_id <- as.data.frame(part_id)
@@ -421,19 +668,35 @@ part_id[,"vsl"] <- str_extract(part_id$part_id, "vsl")
 part_id$part_id_only <- str_extract(part_id$part_id, "sub-\\S+(?=_task)")
 part_id_vsl <- part_id[which(part_id$vsl == "vsl"),]
 
-part_tsv <- merge(part_tsv, part_id_asl[,c("part_id_only", "asl")], by.x = "participant_id", by.y = "part_id_only", all.x = T)
-part_tsv <- merge(part_tsv, part_id_vsl[,c("part_id_only", "vsl")], by.x = "participant_id", by.y = "part_id_only", all.x = T)
+part_id <- merge(part_id_asl[,c("part_id_only", "asl")], part_id_vsl[,c("part_id_only", "vsl")], all = T)
 
-mismatchRun$participant_id <- paste0("sub-",gsub("_", "", mismatchRun$PartID))
+if(nrow(mismatchRun) > 0) {
+  mismatchRun$participant_id <- paste0("sub-",gsub("_", "", mismatchRun$PartID))
 
-part_tsv <- part_tsv[-which(part_tsv$participant_id %in% unique(mismatchRun$participant_id)),]
+  mismatchRun[which(mismatchRun$task == "visual"),]$task <- "vsl"
+  # mismatchRun[which(mismatchRun$task == "auditory"),]$task <- "asl"
+  
+  mismatchRun$mismatch <- 1
+  
+  part_id <- 
+    merge(part_id, mismatchRun[, c("participant_id", "task", "mismatch")], by.x = c("part_id_only", "asl"), by.y = c("participant_id", "task"), all.x = T)
+  
+  part_id <- 
+    merge(part_id, mismatchRun[, c("participant_id", "task", "mismatch")], by.x = c("part_id_only", "vsl"), by.y = c("participant_id", "task"), all.x = T)
+  
+  
+  # part_id[which(part_id$mismatch.x == 1),]$asl <- NA
+  part_id[which(part_id$mismatch.y == 1),]$vsl <- NA
+}
 
-# part_tsv[,c("bug")] <- "no"
-# part_tsv[which(part_tsv$participant_id == "sub-blastc224"), c("bug")] <- "yes"
 
-part_tsv_with_event <-
-  part_tsv %>%
-  filter(!is.na(asl) | !is.na(vsl)) 
+# part_id[,c("bug")] <- "no"
+# part_id[which(part_id$participant_id == "sub-blastc224"), c("bug")] <- "yes"
+
+part_with_event <-
+  part_id %>%
+  filter(!is.na(asl) | !is.na(vsl))
+  
 
 # %>%
 #   subset(bug == "no")
@@ -441,5 +704,5 @@ part_tsv_with_event <-
 # filterSubj <- paste(part_tsv_with_event$participant_id, collapse = "\",\"")
 
 
-write.csv(part_tsv_with_event, "/Volumes/data/projects/blast/data/derivatives/fitlins/participants_fitlins_adult.csv")
+write.csv(part_with_event, "/Volumes/data/projects/blast/data/derivatives/fitlins/participants_fitlins.csv")
 ```

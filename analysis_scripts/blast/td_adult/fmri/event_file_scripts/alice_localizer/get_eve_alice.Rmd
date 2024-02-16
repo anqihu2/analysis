@@ -97,7 +97,7 @@ cond_sum <-
   summarise(condition_sum = toString(condition)) %>%
   ungroup()
 
-# Order 1 and Order 2 should have the same condition-order across runs and lists
+# Each order should have the same condition-order across runs and lists within subject. Order 1 and Order 2 is a between-subject variable.
 cond %>%
   dplyr::select("subjectID", "randSeed", "list", "order", "run", "condition", "trialNum") %>%
   group_by(subjectID, randSeed, list, order, run) %>%
@@ -111,16 +111,15 @@ allEV <-
   dplyr::bind_rows(adultEV, childEV) %>%
   filter(str_detect(subjectID, "blast")) %>%
   dplyr::mutate(onset = as.numeric(as.character(onset))) %>%
+  group_by(subjectID, randSeed, list, order, run) %>%
+  arrange(subjectID, randSeed, list, order, run, onset, trialNum) %>%
   dplyr::mutate(duration = onset - lag(onset)) %>%
   filter(!is.na(onset))
 
 allEV$duration <- append(allEV$duration[-1], NA)
 
-# Last Fix block duration not available. 12 is the number by design.
-allEV[which(allEV$duration < 0 & allEV$trialNum == 16), "duration"] <- as.numeric(12)
-allEV[which(is.na(allEV$duration) & allEV$trialNum == 16), "duration"] <- as.numeric(12)
-
-allEV[nrow(allEV), "duration"] <- as.numeric(12)
+# Last "Fix" block duration not available. 12 is the number by design.
+allEV[which(is.na(allEV$duration) & allEV$trialNum == 16 & allEV$condition == "fix"), "duration"] <- as.numeric(12)
 
 allEV %>%
   filter(is.na(duration))
@@ -138,9 +137,13 @@ for (i in unique(allEV$partID)) {
     filter(run == 1) %>%
     dplyr::select(onset, duration, trial_type, trialNum)
   
-  write.table(run1, paste0("/Volumes/data/projects/blast/data/derivatives/event_files/alice_localizer/", 
+  if(nrow(run1) > 0) {
+    write.table(run1, paste0("/Volumes/data/projects/blast/data/derivatives/event_files/alice_localizer/", 
                            i, "_task-langloc_run-01_events.tsv"), 
               sep='\t', row.names = F)
+  } else {
+    print(i)
+  }
 }
 
 for (i in unique(allEV$partID)) {
@@ -150,27 +153,90 @@ for (i in unique(allEV$partID)) {
     filter(run == 2) %>%
     dplyr::select(onset, duration, trial_type, trialNum)
   
-  write.table(run2, paste0("/Volumes/data/projects/blast/data/derivatives/event_files/alice_localizer/", 
+  if(nrow(run2) > 0) {
+    write.table(run2, paste0("/Volumes/data/projects/blast/data/derivatives/event_files/alice_localizer/", 
                            i, "_task-langloc_run-02_events.tsv"), 
               sep='\t', row.names = F)
+  } else {
+    print(i)
+  }
 }
 ```
 
 
+# Double check the event files all have positive onsets, same number of miniblocks
+```{r}
+cleanEV <-
+  list.files("/Volumes/data/projects/blast/data/derivatives/event_files/alice_localizer",
+             pattern = "*.tsv$", full.names = T)
 
-# Create event files for each individual and move into their bids/func folder
+cleanEV <- as.data.frame(cleanEV)
+
+cleanEV$partID <- str_extract(cleanEV$cleanEV, "sub-blast(a|c)\\d+")
+cleanEV$run <- str_extract(cleanEV$cleanEV, "(?<=run-0)\\d+")
+
+read_langloc <- function(x) {
+  temp <- read.csv(x, stringsAsFactors = F, sep="\t", header = T)
+  
+  if(nrow(temp) > 0) {
+    temp$name <- x
+  }
+
+  return(temp)
+}
+
+longEV <- lapply(as.character(cleanEV$cleanEV), read_langloc)
+
+langEV <- do.call(dplyr::bind_rows, longEV)
+
+problem_file <- 
+  langEV %>%
+  group_by(name) %>%
+  dplyr::summarise(n = n()) %>%
+  filter(n != 16)
+
+langEV %>%
+  filter(onset < 0 | duration < 0)
+
+remove_file <- function(x) {
+  if (file.exists(x)) {
+    print(basename(x))
+    file.remove(x)
+  }
+}
+
+lapply(problem_file$name, remove_file)
+```
+
+
+```{r}
+# Double check that there is lang loc event files that have more than 16 blocks
+langEV %>%
+  group_by(name) %>%
+  dplyr::summarise(n = n()) %>%
+  filter(n != 16)
+
+# Double check that there is no lang loc event files with negative onsets
+langEV %>%
+  filter(onset < 0)
+```
+
+
+# Remove existing event files in bids folders (only use if needed)
 ```{r}
 alice_from <- 
   list.files("/Volumes/data/projects/blast/data/bids", 
               pattern = "sub-blast(a|c)*", full.names = T, recursive = F)
 
 alice_from <- 
-  list.files(paste0(alice_from, "/func"), 
+  list.files(paste0(alice_from, ""), 
               pattern = "sub-blast(a|c)\\d+_task-langloc_run-\\d+_events.tsv$", full.names = T, recursive = F)
+
+file.remove(alice_from)
 
 bk <- alice_from
 ```
-
+# Create event files for each individual and move into their bids/func folder
 ```{r}
 cleanEV <- 
   list.files("/Volumes/data/projects/blast/data/derivatives/event_files/alice_localizer",
@@ -181,19 +247,23 @@ cleanEV <- as.data.frame(cleanEV)
 cleanEV$partID <- str_extract(cleanEV$cleanEV, "sub-blast(a|c)\\d+")
 cleanEV$run <- str_extract(cleanEV$cleanEV, "(?<=run-0)\\d+")
 
+alice_from <- 
+  list.files("/Volumes/data/projects/blast/data/bids", 
+              pattern = "sub-blast(a|c)*", full.names = T, recursive = F)
+
 alice_from <- as.data.frame(alice_from)
 
 alice_from[,"partID"] <- str_extract(alice_from$alice_from, "sub-blast(a|c)\\d+")
-alice_from[,"run"] <- str_extract(alice_from$alice_from, "(?<=run-0)\\d+")
 
+alice_move <- merge(alice_from, cleanEV, by = c("partID"), all.x = T)
 
-alice_move <- merge(alice_from, cleanEV, by = c("partID", "run"), all.x = T)
+alice_move$alice_to <- file.path(alice_move$alice_from, "func", basename(as.character(alice_move$cleanEV)))
 
 alice_move <-
   alice_move %>%
   distinct(.)
 
-file.copy(file.path(alice_move$cleanEV), file.path(alice_move$alice_from), 
+file.copy(file.path(alice_move$cleanEV), file.path(alice_move$alice_to), 
           overwrite = T,
           copy.mode = TRUE, 
           copy.date = TRUE)

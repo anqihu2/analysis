@@ -1,0 +1,257 @@
+---
+title: "get_eve_updated_jh"
+author: "Jojo Hu"
+date: '2023-12-23'
+output: html_document
+---
+
+# To Do: Double Check "sub-blastc560_vsl_run_3_eve" event files to see why there are 18 blocks and so long
+# Extract and Generate BLAST By-trial Auditory SL Task Event Files from In-scanner Behavioral .log Files
+```{r}
+library(stringr)
+library(dplyr)
+library(tidyr)
+
+adultAudioLog <- 
+  list.files(path = "/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/adult/log_files", 
+             pattern = "\\S+auditory_\\S+.log$", full.names = T)
+childAudioLog <- 
+  list.files(path = "/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/child/log_files", 
+             pattern = "\\S+auditory_\\S+.log$", full.names = T)
+
+output_child <- "/Volumes/data/projects/blast/data/derivatives/event_files/children_new"
+output_adult <- "/Volumes/data/projects/blast/data/derivatives/event_files/adults_new"
+
+# TO DO:the format of blast_a_001_auditory_2.log is different from all other event files. Empty event file generated. Check to see how this might be fixed.
+adultAudioLog <- 
+  adultAudioLog[-which(adultAudioLog %in% "/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/adult/log_files/blast_a_001_auditory_2.log")]
+# TO DO:the format of blast_c_213_auditory_1.log is different from all other event files. Empty event file generated. Check to see how this might be fixed.
+childAudioLog <-
+  childAudioLog[-which(childAudioLog %in% "/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/child/log_files/blast_c_213_auditory_1.log")]
+
+readAudioLog <- function(df) {
+  file_name <- basename(df)
+  file_name <- str_replace(file_name, ".log", ".txt")
+  
+  # Reformat the file name due to existing analysis pipeline
+  name_temp <- paste0("sub-", str_replace_all(str_extract(file_name, "blast_(a|c)_[:digit:]+"), "_", ""))
+
+  if(str_detect(file_name, "visual")) {
+    name_temp <- paste0(name_temp, "_vsl_run_")
+  } else if(str_detect(file_name, "auditory")) {
+    name_temp <- paste0(name_temp, "_asl_run_")
+  }
+  
+  name_temp <- paste0(name_temp, str_extract(file_name, "(?<=_)[:digit:]{1}(?=.txt)"), "_eve.txt")
+  
+  temp <- read.delim(df, sep = "\t", header = F, stringsAsFactors = F)
+  
+  temp <- 
+    temp %>%
+    filter(str_detect(V3, "New trial") | str_detect(V3, "Keypress: 5")) %>%
+    mutate(index = str_extract(V3, "(?<=index=)[:digit:]*"),
+           soundFile = str_extract(V3, "(?<='soundFile': u')\\S+(?=.wav)"),
+           # image = str_extract(V3, "(?<='image': u')\\S+(?=.png)"),
+           word = str_extract(V3, "(?<='word': )[:digit:]*"),
+           location = str_extract(V3, "(?<='location': )[:digit:]*"),
+           repetition = str_extract(V3, "(?<='repetition': )[:digit:]*"),
+           trialnum = str_extract(V3, "(?<='trialnum': )[:digit:]*"),
+           condition = str_extract(V3, "(?<='condition': u')\\S{1}")) 
+  
+  # Identify only usable data. Get rid of any data that was supposed to be overwritten
+  temp <- 
+    temp %>%
+    mutate(V1 = as.numeric(as.character(V1))) %>%
+    # Use onset times to identify where new data were appended
+    mutate(diff = V1 - lag(V1)) %>%
+    mutate(row_number = row_number()) %>%
+    # If the time difference from the last trial is negative, that means new data were appended
+    mutate(restart = ifelse(diff < 0, row_number, NA)) 
+  
+  check_restart <- 
+    temp %>%
+    filter(!is.na(restart))
+  
+  if (nrow(check_restart) > 0) {
+    temp <- 
+      temp %>%
+      filter(row_number() >= max(restart, na.rm = T))
+  }
+  
+  
+  # Find where the first trigger is in the log file
+  temp <-
+    temp %>%
+    # The start of the SL tasks/ First trigger sent to the scanner always showed up as a sequence of consecutive "Keypress: 5"
+    mutate(trial_after = append(V3[2:length(V3)], NA)) %>%
+    # Find where the triggers are by comparing the stimuli from one trial after and from the current trial
+    mutate(find_trigger = ifelse(V3 == trial_after, "potential_start", NA)) %>%
+    # Find the actual first trigger by comparing the trigger from one trial before and from the current trial
+    mutate(trigger_before = append(NA, find_trigger[1:(length(find_trigger) - 1)])) %>%
+    # Find the actual first trigger, which is the first "Keypress = 5" in the sequence
+    mutate(first_trigger = ifelse((find_trigger == "potential_start" & is.na(trigger_before)), "first_trigger", NA))
+  
+  # Extract the usable data with the most recent trigger sent
+  temp <-
+    temp %>%
+    mutate(first_trigger_row = ifelse(first_trigger == "first_trigger", row_number(), NA)) %>%
+    mutate(true_trigger = min(first_trigger_row, na.rm = T)) %>%
+    filter(row_number() >= unique(true_trigger)) %>%
+    mutate(V1 = as.numeric(as.character(V1))) %>%
+    filter(first_trigger == "first_trigger" | !is.na(soundFile)) %>%
+    arrange(V1)
+  
+  temp$trigger_tp <- temp[which(temp$first_trigger_row == temp$true_trigger), "V1"]
+  
+  temp <- 
+    temp %>%
+    filter(first_trigger == "first_trigger" | !is.na(soundFile)) %>%
+    arrange(V1) %>%
+    mutate(onset = V1 - trigger_tp) %>%
+    filter(!is.na(soundFile)) %>%
+    dplyr::select("onset", "word", "location", "soundFile", "repetition",	"trialnum",	"condition")
+  
+  if(str_detect(file_name, "blast_c")) {
+    print(file_name)
+    write.table(temp, file.path(output_child, name_temp), row.names = F, sep = '\t')
+  } else if(str_detect(file_name, "blast_a")) {
+    print(file_name)
+    write.table(temp, file.path(output_adult, name_temp), row.names = F, sep = '\t')
+  }
+}
+
+lapply(adultAudioLog, readAudioLog)
+lapply(childAudioLog, readAudioLog)
+```
+
+
+
+# Extract and Generate BLAST By-trial Visual SL Task Event Files from In-scanner Behavioral .log Files
+```{r}
+library(stringr)
+library(dplyr)
+library(tidyr)
+
+adultVisualLog <- 
+  list.files(path = "/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/adult/log_files", 
+             pattern = "\\S+visual_\\S+.log$", full.names = T)
+childVisualLog <- 
+  list.files(path = "/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/child/log_files", 
+             pattern = "\\S+visual_\\S+.log$", full.names = T)
+
+output_child <- "/Volumes/data/projects/blast/data/derivatives/event_files/children_new"
+output_adult <- "/Volumes/data/projects/blast/data/derivatives/event_files/adults_new"
+
+# TO DO:the format of blast_a_001_auditory_2.log is different from all other event files. Empty event file generated. Check to see how this might be fixed.
+adultVisualLog <-
+  adultVisualLog[-which(adultVisualLog %in% "/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/adult/log_files/blast_a_029_visual_1.log")]
+
+# TO DO:the format of blast_c_213_auditory_1.log is different from all other event files. Empty event file generated. Check to see how this might be fixed.
+childVisualLog <-
+  childVisualLog[-which(childVisualLog %in% "/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/child/log_files/blast_c_211_visual_1.log")]
+
+childVisualLog <-
+  childVisualLog[-which(childVisualLog %in% "/Volumes/data/projects/blast/data/mri/in_scanner_behavioral/sl_raw_data/child/log_files/blast_c_269_visual_4.log")]
+
+readVisualLog <- function(df) {
+  file_name <- basename(df)
+  file_name <- str_replace(file_name, ".log", ".txt")
+  
+  # Reformat the file name due to existing analysis pipeline
+  name_temp <- paste0("sub-", str_replace_all(str_extract(file_name, "blast_(a|c)_[:digit:]+"), "_", ""))
+
+  if(str_detect(file_name, "visual")) {
+    name_temp <- paste0(name_temp, "_vsl_run_")
+  } else if(str_detect(file_name, "auditory")) {
+    name_temp <- paste0(name_temp, "_asl_run_")
+  }
+  
+  name_temp <- paste0(name_temp, str_extract(file_name, "(?<=_)[:digit:]{1}(?=.txt)"), "_eve.txt")
+  
+  temp <- read.delim(df, sep = "\t", header = F, stringsAsFactors = F)
+  
+  temp <- 
+    temp %>%
+    filter(str_detect(V3, "New trial") | str_detect(V3, "Keypress: 5")) %>%
+    mutate(index = str_extract(V3, "(?<=index=)[:digit:]*"),
+           # soundFile = str_extract(V3, "(?<='soundFile': u')\\S+(?=.wav)"),
+           image = str_extract(V3, "(?<='image': u')\\S+(?=.(png|bmp))"),
+           word = str_extract(V3, "(?<='word': )[:digit:]*"),
+           location = str_extract(V3, "(?<='location': )[:digit:]*"),
+           repetition = str_extract(V3, "(?<='repetition': )[:digit:]*"),
+           trialnum = str_extract(V3, "(?<='trialnum': )[:digit:]*"),
+           condition = str_extract(V3, "(?<='condition': u')\\S{1}")) 
+  
+  # Identify only usable data. Get rid of any data that was supposed to be overwritten
+  temp <- 
+    temp %>%
+    mutate(V1 = as.numeric(as.character(V1))) %>%
+    # Use onset times to identify where new data were appended
+    mutate(diff = V1 - lag(V1)) %>%
+    mutate(row_number = row_number()) %>%
+    # If the time difference from the last trial is negative, that means new data were appended
+    mutate(restart = ifelse(diff < 0, row_number, NA)) 
+  
+  check_restart <- 
+    temp %>%
+    filter(!is.na(restart))
+  
+  if (nrow(check_restart) > 0) {
+    temp <- 
+      temp %>%
+      filter(row_number() >= max(restart, na.rm = T))
+  }
+  
+  
+  # Find where the first trigger is in the log file
+  temp <-
+    temp %>%
+    # The start of the SL tasks/ First trigger sent to the scanner always showed up as a sequence of consecutive "Keypress: 5"
+    mutate(trial_after = append(V3[2:length(V3)], NA)) %>%
+    # Find where the triggers are by comparing the stimuli from one trial after and from the current trial
+    mutate(find_trigger = ifelse(V3 == trial_after, "potential_start", NA)) %>%
+    # Find the actual first trigger by comparing the trigger from one trial before and from the current trial
+    mutate(trigger_before = append(NA, find_trigger[1:(length(find_trigger) - 1)])) %>%
+    # Find the actual first trigger, which is the first "Keypress = 5" in the sequence
+    mutate(first_trigger = ifelse((find_trigger == "potential_start" & is.na(trigger_before)), "first_trigger", NA))
+  
+  # Extract the usable data with the most recent trigger sent
+  temp <-
+    temp %>%
+    mutate(first_trigger_row = ifelse(first_trigger == "first_trigger", row_number(), NA)) %>%
+    mutate(true_trigger = min(first_trigger_row, na.rm = T)) %>%
+    filter(row_number() >= unique(true_trigger)) %>%
+    mutate(V1 = as.numeric(as.character(V1))) %>%
+    filter(first_trigger == "first_trigger" | !is.na(image)) %>%
+    arrange(V1)
+  
+  temp$trigger_tp <- temp[which(temp$first_trigger_row == temp$true_trigger), "V1"]
+  
+  temp <- 
+    temp %>%
+    filter(first_trigger == "first_trigger" | !is.na(image)) %>%
+    arrange(V1) %>%
+    mutate(onset = V1 - trigger_tp) %>%
+    filter(!is.na(image)) %>%
+    dplyr::select("onset", "word", "location", "image", "repetition",	"trialnum",	"condition")
+  
+  if(str_detect(file_name, "blast_c")) {
+    print(file_name)
+    write.table(temp, file.path(output_child, name_temp), row.names = F, sep = '\t')
+  } else if(str_detect(file_name, "blast_a")) {
+    print(file_name)
+    write.table(temp, file.path(output_adult, name_temp), row.names = F, sep = '\t')
+  }
+}
+
+lapply(adultVisualLog, readVisualLog)
+lapply(childVisualLog, readVisualLog)
+```
+
+
+
+
+  
+
+
+

@@ -1,0 +1,219 @@
+---
+title: "blast_fmri_clean_file"
+author: "Jojo Hu"
+date: "9/23/2022"
+output: html_document
+---
+
+# TO DO: Delete what is already in these folders
+
+# Clean and move adult files (Subject-Level LangLoc Intact - Degraded)
+```{r}
+library(stringr)
+library(dplyr)
+
+aliceFileUE <-
+  list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/unedit_fmriprep/langloc/subjectLevel", 
+           pattern = "sub-blasta*", 
+           full.names = T, recursive = F)
+aliceFileUE <-
+  list.files(aliceFileUE,
+           pattern =  "sub-blasta\\d+_task-langloc_contrast-intactminusdegraded_stat-z_statmap.nii.gz", 
+           full.names = T, recursive = F)
+
+aliceFileUE <- as.data.frame(aliceFileUE)
+aliceFileUE$aliceFileUE <- as.character(aliceFileUE$aliceFileUE)
+
+aliceFile <-
+  list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/edit_fmriprep/langloc/subjectLevel", 
+           pattern = "sub-blasta*", 
+           full.names = T, recursive = F)
+aliceFile <-
+  list.files(aliceFile,
+           pattern =  "sub-blasta\\d+_task-langloc_contrast-intactminusdegraded_stat-z_statmap.nii.gz", 
+           full.names = T, recursive = F)
+
+aliceFile <- as.data.frame(aliceFile)
+aliceFile$aliceFile <- as.character(aliceFile$aliceFile)
+
+# Save edited fMRI outputs and remove unedited fMRI outputs that are already in edited fMRI outputs
+aliceFileUE <- 
+  aliceFileUE %>%
+  filter(!basename(aliceFileUE) %in% basename(aliceFile$aliceFile)) 
+
+aliceFileUE <- 
+  aliceFileUE %>%
+  mutate(source = str_extract(aliceFileUE, "unedit_fmriprep"))
+
+aliceFile <- 
+  aliceFile %>%
+  mutate(source = str_extract(aliceFile, "edit_fmriprep"))
+
+aliceFile <- 
+  dplyr::bind_rows(aliceFileUE, aliceFile) %>%
+  mutate(aliceFile = coalesce(aliceFile, aliceFileUE)) %>%
+  dplyr::select(-one_of("aliceFileUE")) %>%
+  mutate(basename = basename(aliceFile)) %>%
+  mutate(part_id = str_extract(basename, "sub-blasta[[:digit:]]+"),
+         bare_id = str_extract(basename, "(?<=sub-blasta)[[:digit:]]+")) %>%
+  dplyr::select(part_id, bare_id, basename, source, aliceFile) %>%
+  distinct(.) %>%
+  arrange(part_id) %>%
+  dplyr::mutate(rename_id = paste0(seq(1:nrow(.)), "_stat-z_statmap.nii.gz"),
+         rename_number = seq(1:nrow(.)))
+```
+
+
+
+```{r}
+aliceFile$new_path <- 
+  file.path("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/adult", aliceFile$basename)
+
+aliceFile$new_name <- file.path("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/adult",
+                             aliceFile$rename_id)
+
+aliceFile$format_id <- paste("blast", str_extract(aliceFile$part_id, "(?<=blast)\\S{1}"), str_extract(aliceFile$part_id, "(?<=blasta)\\S+"), sep = "_")
+
+aliceFileAd <- aliceFile
+
+file.copy(as.character(aliceFile$aliceFile), aliceFile$new_path, overwrite = T)
+
+file.rename(aliceFile$new_path, aliceFile$new_name)
+
+write.csv(aliceFile, 
+          "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_adult.csv", row.names = F)
+
+my_output <- capture.output(write.table(aliceFile[, "bare_id"], sep = " ", col.names = F, row.names = F, quote = F, eol = "\n"))
+writeBin(paste(my_output, collapse = "\n"),  "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/langloc_adult.txt")
+```
+
+
+# Clean and move children files
+```{r}
+library(stringr)
+
+aliceFileUE <-
+  list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/unedit_fmriprep/langloc/subjectLevel", 
+           pattern = "sub-blastc*", 
+           full.names = T, recursive = F)
+aliceFileUE <-
+  list.files(aliceFileUE,
+           pattern =  "sub-blastc\\d+_task-langloc_contrast-intactminusdegraded_stat-z_statmap.nii.gz", 
+           full.names = T, recursive = F)
+
+aliceFileUE <- as.data.frame(aliceFileUE)
+aliceFileUE$aliceFileUE <- as.character(aliceFileUE$aliceFileUE)
+
+aliceFile <-
+  list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/edit_fmriprep/langloc/subjectLevel", 
+           pattern = "sub-blastc*", 
+           full.names = T, recursive = F)
+aliceFile <-
+  list.files(aliceFile,
+           pattern =  "sub-blastc\\d+_task-langloc_contrast-intactminusdegraded_stat-z_statmap.nii.gz", 
+           full.names = T, recursive = F)
+
+aliceFile <- as.data.frame(aliceFile)
+aliceFile$aliceFile <- as.character(aliceFile$aliceFile)
+
+# Save edited fMRI outputs and remove unedited fMRI outputs that are already in edited fMRI outputs
+aliceFileUE <- 
+  aliceFileUE %>%
+  filter(!basename(aliceFileUE) %in% basename(aliceFile$aliceFile)) 
+
+aliceFileUE <- 
+  aliceFileUE %>%
+  mutate(source = str_extract(aliceFileUE, "unedit_fmriprep"))
+
+aliceFile <- 
+  aliceFile %>%
+  mutate(source = str_extract(aliceFile, "edit_fmriprep"))
+
+aliceFile <- 
+  dplyr::bind_rows(aliceFileUE, aliceFile) %>%
+  mutate(aliceFile = coalesce(aliceFile, aliceFileUE)) %>%
+  dplyr::select(-one_of("aliceFileUE")) %>%
+  mutate(basename = basename(aliceFile)) %>%
+  mutate(part_id = str_extract(basename, "sub-blastc[[:digit:]]+"),
+         bare_id = str_extract(basename, "(?<=sub-blastc)[[:digit:]]+")) %>%
+  dplyr::select(part_id, bare_id, basename, source, aliceFile) %>%
+  distinct(.) %>%
+  arrange(part_id) 
+
+# Read in TD subject list
+tdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - TD.csv")
+
+aliceFile$format_id <- paste("blast", str_extract(aliceFile$part_id, "(?<=blast)\\S{1}"), str_extract(aliceFile$part_id, "(?<=blastc)\\S+"), sep = "_")
+
+aliceFile <- 
+  aliceFile %>%
+  filter(format_id %in% unique(tdID$ID)) %>%
+  distinct(.)
+
+aliceFile <- 
+  aliceFile %>%
+  arrange(part_id) %>%
+  dplyr::mutate(rename_id = paste0(seq(1:nrow(.)), "_stat-z_statmap.nii.gz"),
+         rename_number = seq(1:nrow(.)))
+
+aliceFile$new_path <- paste0("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/child/td/",
+                             aliceFile$basename)
+
+aliceFile$new_name <- paste0("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/child/td/",
+                             aliceFile$rename_id)
+
+aliceFileTD <- aliceFile
+
+file.copy(as.character(aliceFile$aliceFile), aliceFile$new_path, overwrite = T)
+
+file.rename(aliceFile$new_path, aliceFile$new_name)
+
+write.csv(aliceFile, 
+          "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_child.csv", row.names = F)
+
+my_output <- capture.output(write.table(aliceFile[, "bare_id"], sep = " ", col.names = F, row.names = F, quote = F, eol = "\n"))
+writeBin(paste(my_output, collapse = "\n"),  "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/langloc_child.txt")
+```
+
+# Save combined dataset
+```{r}
+aliceCombined <-
+  dplyr::bind_rows(aliceFileAd, aliceFileTD) %>%
+  distinct(.) %>%
+  arrange(part_id) %>%
+  dplyr::mutate(rename_id = paste0(1:n(), "_stat-z_statmap.nii.gz"),
+                rename_number = 1:n())
+
+aliceCombined$new_path <- paste0("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/combined/td_adult/", 
+                                 aliceCombined$basename)
+
+aliceCombined$new_name <- paste0("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/combined/td_adult/",  
+                                 aliceCombined$rename_id)
+
+file.copy(as.character(aliceCombined$aliceFile), aliceCombined$new_path, overwrite = F)
+
+```
+
+
+
+
+
+
+```{r}
+file.rename(aliceCombined$new_path, aliceCombined$new_name)
+
+write.csv(aliceCombined, 
+          "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_combined.csv", row.names = F)
+
+my_output <- capture.output(write.table(aliceCombined[, "bare_id"], sep = " ", col.names = F, row.names = F, quote = F, eol = "\n"))
+writeBin(paste(my_output, collapse = "\n"),  "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/langloc_combined.txt")
+```
+
+
+
+
+
+
+
+
+
