@@ -174,7 +174,8 @@ colnames(blast_spoli_data_wide) <- revalue(colnames(blast_spoli_data_wide),
 
 # Merge demographic data for children
 ```{r, include = F}
-
+library(dplyr)
+library(stringr)
 #Extract relevant demo information
 gender_group_info <- demo_all[,c("part_id", "group", "gender", "age_at_web_month", "age_at_web_year")]
 #Merge all demo data with sl measures
@@ -206,19 +207,16 @@ blast_spoli_data_wide$entropy_children_lsl_entropy <-
   coalesce(blast_spoli_data_wide$lsl_predictable_ent,
            blast_spoli_data_wide$lsl_randomized_ent)
 
+# Some part_ids end with _ due to incorrectly backed up file names
+blast_spoli_data_wide <-
+  blast_spoli_data_wide %>%
+  filter(!str_ends(part_id, ("_")))
+
 ineligible_part_spoli <- blast_spoli_data_wide[which(blast_spoli_data_wide$age_at_web_year > 13 | blast_spoli_data_wide$age_at_web_year < 6),]
 blast_spoli_data_wide <- blast_spoli_data_wide[-which(blast_spoli_data_wide$age_at_web_year > 13 | blast_spoli_data_wide$age_at_web_year < 6),]
 # 
 # 
-# print(ineligible_part_spoli[,c("part_id", "group", "age_at_web_year")])
-
-# aggreated_sl_data <-
-#   blast_spoli_data_wide %>%
-#   dplyr::select(-one_of("gjt_std", "lsl_random_2afc_acc", "lsl_predictable_2afc_acc", "lsl_predictable_ent", "lsl_randomized_ent", "entropy_children_lsl_entropy", "lsl_ent", "tsl_ent", "vsl_ent", "ssl_ent")) %>%
-#   filter(part_id != "blast_c_554_") %>%
-#   filter(part_id != "blast_c_554_blast_c_555_")
-# 
-# write.csv(aggreated_sl_data, "/Users/jojohu/Documents/Qlab/manuscript_development/aggreated_web_sl.csv", row.names = F)
+print(ineligible_part_spoli[,c("part_id", "group", "age_at_web_year")])
 ```
 **Above are ineligible participants.**
 
@@ -285,6 +283,7 @@ blast_adult_wide$lsl_ent <-
   coalesce(blast_adult_wide$lsl_predictable_ent,
            blast_adult_wide$lsl_randomized_ent)
 ```
+
 
 # Merge assessment data for children (more data prep for children)
 ```{r, include = FALSE}
@@ -359,119 +358,195 @@ allData[,which(str_detect(colnames(allData),
            })
 ```
 
-# RSR Clean
-```{r}
-rsrh <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/rsr_home.csv")
-rsrlab <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/rsr_lab.csv")
 
+# Clean RSR Data
+```{r}
+# Extract Individual Difference Measures (Run blast_td_asd_analysis.Rmd to get the blast SL and GJT data)
+smile_rsr1 <- read.csv("/Users/jojohu/Downloads/RSR Online Home Scores (OLD)  - smile scores (rsr1).csv", stringsAsFactors = F)[,c("participant.id", "raw.score", "standard", "TIME_follow.up")]
+smile_rsr2 <- read.csv("/Users/jojohu/Downloads/RSR Online Home Scores (OLD)  - smile scores RSR2.csv", stringsAsFactors = F)[,c("participant.id", "raw.score", "standard", "TIME_follow.up")]
+
+blast_rsr1 <- read.csv("/Users/jojohu/Downloads/RSR Online Home Scores (OLD)  - blast scores (rsr_rsr1).csv", stringsAsFactors = F)[c("participant.id", "raw.score", "standard", "TIME_follow.up")]
+spoli_rsr1 <- read.csv("/Users/jojohu/Downloads/RSR Online Home Scores (OLD)  - spoli scores (rsr_rsr1).csv", stringsAsFactors = F)[c("participant.id", "raw.score", "standard")]
+
+blast_rsr2 <- read.csv("/Users/jojohu/Downloads/RSR Online Home Scores (OLD)  - blast scores (rsr2).csv", stringsAsFactors = F)[,c("participant.id", "raw.score", "standard", "TIME_follow.up")]
+spoli_rsr2 <- read.csv("/Users/jojohu/Downloads/RSR Online Home Scores (OLD)  - spoli scores (rsr2).csv", stringsAsFactors = F)[,c("participant.id", "raw.score", "standard")]
+
+
+changeType <-  
+function(df) {
   
-rsrh[,c(3:4)] <- 
-  lapply(rsrh[,c(3:4)], function(x) {
-  if (is.factor(x))
-    as.numeric(as.character(x))
-  else
-    x
-})
-
-colnames(rsrh)[3:4] <- c("rsr_home_raw", "rsr_home_standard")
-
-rsrlab[,c(3:4)] <- 
-  lapply(rsrlab[,c(3:4)], function(x) {
-  if (is.factor(x))
-    as.numeric(as.character(x))
-  else
-    x
-})
-
-colnames(rsrlab)[3:4] <- c("rsr_lab_raw", "rsr_lab_standard")
-
-rsr <- merge(rsrh[,c(1,3,4)], rsrlab[,c(1,3,4)], all = T)
-
-# Merge RSR scores from the drive checklist
-drive_rsr <- drive_checklist[,c("Participant.ID", "rsr_home_raw", "rsr_home_standard", "rsr_lab_raw", "rsr_lab_standard")]
-
-drive_rsr[,c(2:5)] <- 
-  lapply(drive_rsr[,c(2:5)], function(x) {
-  if (is.factor(x))
-    as.numeric(as.character(x))
-  else
-    x
-})
-
-
-colnames(drive_rsr)[which(colnames(drive_rsr) == "Participant.ID")] <- "participant.id"
-
-# # write.csv(drive_rsr, "RA_check_RSR_entry_drive.csv")
-
-# Check whether the drive entries for RSR are correct. Some do not seem to be accurate. If correct, will use merge instead of manual adding below.
-rd <- drive_rsr[which(drive_rsr$participant.id %in% 
-                        setdiff(drive_rsr$participant.id, rsr$participant.id)),]
-
-rsr <-rbind(rsr, rd)
-```
-
-```{r}
-spoli_rsr <- read.csv("/Users/jojohu/Downloads/RSR Online Home Scores  - spoli scores (rsr_rsr1).csv", stringsAsFactors = F)[,c(1:4)]
-blast_rsr <- read.csv("/Users/jojohu/Downloads/RSR Online Home Scores  - blast scores (rsr_rsr1).csv",  stringsAsFactors = F)[,c(1:4)]
-rsr_online <- rbind(spoli_rsr, blast_rsr)
-
-rsr_online$raw.score <- as.numeric(rsr_online$raw.score)
-rsr_online$standard <- as.numeric(rsr_online$standard)
-rsr_online$participant.id <- tolower(rsr_online$participant.id)
-
-rsr_online <- rsr_online[,c("participant.id", "raw.score", "standard")]
-
-# rsr_online <- rsr_online[which(rsr_online$participant.id %in% 
-#                                  setdiff(rsr_online$participant.id, rsr$participant.id)), 
-#                          c("participant.id", "raw.score", "standard")]
-
-colnames(rsr_online) <- c("participant.id", "rsr_home_raw", "rsr_home_standard")
-rsr_online$rsr_lab_raw <- NA
-rsr_online$rsr_lab_standard <- NA
-
-rsr <- rbind(rsr, rsr_online)
-
-rsr <- 
-  rsr %>%
-  filter(!is.na(rsr_home_raw) | !is.na(rsr_home_standard) | !is.na(rsr_lab_raw) | !is.na(rsr_lab_standard))
-
-rsr <- rsr[-which(duplicated(rsr)),]
-
-rsr$rsr_home_raw <- as.numeric(as.character(rsr$rsr_home_raw))
-rsr$rsr_home_standard <- as.numeric(as.character(rsr$rsr_home_standard))
-rsr$rsr_lab_raw <- as.numeric(as.character(rsr$rsr_lab_raw))
-rsr$rsr_lab_standard <- as.numeric(as.character(rsr$rsr_lab_standard))
-
-dupID <- rsr[which(duplicated(rsr$participant.id)),]
-
-rsr[which(rsr$participant.id %in% dupID$participant.id),]
-
-# coalesce by row:
-# Supply lists by splicing them into dots:
-coalesce_by_column <- function(df) {
-  return(dplyr::coalesce(!!! as.list(df)))
+  df$raw.score <- as.numeric(as.character(df$raw.score))
+  df$standard <- as.numeric(as.character(df$standard))
+  
+  df <- 
+    df %>%
+      filter(!is.na(participant.id)) %>%
+      filter(participant.id != "") %>%
+      mutate(participant.id = tolower(participant.id))
+  
+  if(length(which(colnames(df) %in% "TIME_follow.up")) > 0) {
+    df <-
+      df %>%
+        mutate(participant.id = ifelse(TIME_follow.up, paste0(participant.id, "_followup"), participant.id))
+  }  
+    
+  
+  return(df)
 }
-rsr <- 
-  rsr %>%
-  group_by(participant.id) %>%
-  summarise_all(coalesce_by_column)
+
+smile_rsr1 <- changeType(smile_rsr1)
+smile_rsr2 <- changeType(smile_rsr2)
+blast_rsr1 <- changeType(blast_rsr1)
+blast_rsr2 <- changeType(blast_rsr2)
+spoli_rsr1 <- changeType(spoli_rsr1)
+spoli_rsr2 <- changeType(spoli_rsr2)
+
+smile_rsr1$task <- "rsr1"
+smile_rsr2$task <- "rsr2"
+blast_rsr1$task <- "rsr1"
+blast_rsr2$task <- "rsr2"
+spoli_rsr1$task <- "rsr1"
+spoli_rsr2$task <- "rsr2"
+
+rsr_scores <- 
+  dplyr::bind_rows(blast_rsr1, blast_rsr2, spoli_rsr1, spoli_rsr2, smile_rsr1, smile_rsr2) %>%
+  distinct(.)
+
+rsr1_raw <-
+  rsr_scores %>%
+  dplyr::select(-one_of("TIME_follow.up")) %>%
+  filter(task == "rsr1") %>%
+  dplyr::rename(rsr1_raw = raw.score,
+                rsr1_std = standard) %>%
+  dplyr::select(-one_of("task"))
+
+rsr2_raw <-
+  rsr_scores %>%
+  dplyr::select(-one_of("TIME_follow.up")) %>%
+  filter(task == "rsr2") %>%
+  dplyr::rename(rsr2_raw = raw.score,
+                rsr2_std = standard) %>%
+  dplyr::select(-one_of("task"))
+
+rsr_scores <- merge(rsr1_raw, rsr2_raw, all = T)
+
+rsr_scores <-
+  rsr_scores %>%
+  filter(!is.na(participant.id)) %>%
+  dplyr::rename(part_id = participant.id)
+
+# Get more RSR scores from our new template
+# more_scores <- list.files(path = "/Users/jojohu/Downloads", pattern = "all_rsr*", full.names = T)
+more_scores <- list.files(path = "/Users/jojohu/Downloads", pattern = "all_rsr*", full.names = T)
+
+read_more_score <-
+  function (df) {
+    file_name <- basename(df)
+    file_name <- str_extract(file_name, "\\S+(?=.csv)")
+    
+    df <- read.csv(df, stringsAsFactors = F)
+    colnames(df) <- c("ID", "Date", "DOB", "Age", "rsr1_raw", "rsr1_std", "rsr1_raw_second", "rsr1_std_second", "rsr2_raw", "rsr2_std", "rsr2_raw_second", "rsr2_std_second", "first_scorer", "second_scorer", "redcap_logged", "notes")
+    df$file_name <- tolower(file_name)
+    
+    df <- 
+      df %>%
+      mutate(part_id = tolower(ID)) %>%
+      mutate(part_id = ifelse(str_detect(file_name, "follow-up"), paste0(part_id, "_followup"), part_id)) %>%
+      slice(-1)
+   
+    return(df)
+  }
+
+more_scores <- lapply(more_scores, read_more_score)
+more_scores <- do.call(dplyr::bind_rows, more_scores)
+
+more_scores[,c("rsr1_raw", "rsr1_std", "rsr1_raw_second", "rsr1_std_second", "rsr2_raw", "rsr2_std", "rsr2_raw_second", "rsr2_std_second")] <- 
+  sapply(more_scores[,c("rsr1_raw", "rsr1_std", "rsr1_raw_second", "rsr1_std_second", "rsr2_raw", "rsr2_std", "rsr2_raw_second", "rsr2_std_second")], as.character)
+
+more_scores[,c("rsr1_raw", "rsr1_std", "rsr1_raw_second", "rsr1_std_second", "rsr2_raw", "rsr2_std", "rsr2_raw_second", "rsr2_std_second")] <- 
+  sapply(more_scores[,c("rsr1_raw", "rsr1_std", "rsr1_raw_second", "rsr1_std_second", "rsr2_raw", "rsr2_std", "rsr2_raw_second", "rsr2_std_second")], as.numeric)
+
+more_scores <-
+  more_scores %>%
+  dplyr::select("part_id", "rsr1_raw", "rsr1_std", "rsr2_raw", "rsr2_std")
+
+new_scores <-
+  more_scores %>%
+  filter(str_detect(part_id, "[:alnum:]")) %>%
+  distinct(.) %>%
+  filter(!part_id %in% rsr_scores$part_id)
+
+overlap <-
+  more_scores %>%
+  filter(part_id %in% rsr_scores$part_id)
+
+rsr_scores <- dplyr::bind_rows(rsr_scores, new_scores)
+
+all_rsr <- 
+  merge(rsr_scores, overlap, by = ("part_id"), all.x = T) %>%
+  mutate(rsr1_raw = coalesce(rsr1_raw.x, rsr1_raw.y),
+         rsr1_std = coalesce(rsr1_std.x, rsr1_std.y),
+         rsr2_raw = coalesce(rsr2_raw.x, rsr2_raw.y),
+         rsr2_std = coalesce(rsr2_std.x, rsr2_std.y)) %>%
+  dplyr::select("part_id", "rsr1_raw", "rsr1_std", "rsr2_raw", "rsr2_std") %>%
+  filter(str_detect(part_id, "^[:alnum:]"))
+
+library(reshape2)
+library(tidyr)
+all_rsr <-
+  melt(all_rsr, id.vars = "part_id") %>%
+  mutate(task = str_extract(variable, "rsr1|rsr2"),
+         score_type = str_extract(variable, "raw|std")) %>%
+  dplyr::select(-one_of("variable")) %>%
+  distinct(.)
+
+# Must make sure each partcipant only has one entry
+all_rsr <-
+  cast(all_rsr, part_id + task ~ score_type, value = c("value")) %>%
+  filter(!is.na(raw) | !is.na(std)) %>%
+  distinct(.) %>%
+  dplyr::rename("rsr_raw" = "raw",
+                "rsr_std" = "std") %>%
+  arrange(part_id)
+
+inlabRSR <- read.csv("/Users/jojohu/Documents/Time/data_lang/qlab_participant_checklist - blast_in_lab.csv", stringsAsFactors = F)
+
+names(inlabRSR) <- as.character(inlabRSR[1,])
+inlabRSR <- inlabRSR[-1,]
+
+inlabRSR$rsr_raw <-
+  as.numeric(as.character(coalesce(inlabRSR$rsr_home_raw, inlabRSR$rsr_lab_raw)))
+
+inlabRSR$rsr_std <-
+  as.numeric(as.character(coalesce(inlabRSR$rsr_home_standard, inlabRSR$rsr_lab_standard)))
+
+inlabRSR$part_id <- tolower(inlabRSR$`Participant ID`)
+
+blastRSR <- 
+  inlabRSR %>%
+  dplyr::select(part_id, rsr_raw, rsr_std) %>%
+  filter(!part_id %in% all_rsr$part_id) %>%
+  filter(!is.na(rsr_raw)|!is.na(rsr_std))
+
+
+all_rsr <- 
+  dplyr::bind_rows(all_rsr, blastRSR) %>%
+  arrange(part_id) %>%
+  distinct(.)
+
+all_rsr <-
+  all_rsr %>%
+  filter(task == "rsr1") %>%
+  dplyr::select(-one_of("task")) %>%
+  distinct(.)
 ```
 
-
+# Merge RSR Scores
 ```{r}
-# How many RSR in total?
-rsr_total <- nrow(rsr)
-
-# write.csv(rsr, "/Users/jojohu/Documents/Qlab/bucld_2019_followup/rsr_all.csv")
-
 allData <- 
-  merge(allData, rsr, by.x = "part_id", by.y = "participant.id", all.x = TRUE)
+  merge(allData, all_rsr, by = "part_id", all.x = TRUE)
 
 # How many people have RSR
-allData$rsr_raw <- coalesce(allData$rsr_home_raw, allData$rsr_lab_raw)
-allData$rsr_std <- coalesce(allData$rsr_home_standard, allData$rsr_lab_standard)
-# When there are 2 scores from both home and lab, home is prioritized as more people have rsr from home
-
 rsr_td_count <-
   length(which(!is.na(allData$rsr_raw) & allData$group == "TD"))
 
@@ -484,10 +559,6 @@ rsrh_td <-
 
 rsrh_asd <-
   length(which(!is.na(allData$rsr_home_raw) & allData$group == "ASD"))
-
-
-
-
 ```
 
 # GJT scores
@@ -508,7 +579,6 @@ ctopp$nonword_std  <- as.numeric(as.character(ctopp$nonword_std))
 
 allData <- 
   merge(allData, ctopp, by.x = "part_id", by.y = "part_id", all.x = TRUE)
-
 ```
 Total number of scored RSR: `r rsr_total`
 
@@ -595,28 +665,6 @@ beforeMatch <- allData
 ```
 
 
-```{r, eval = F}
-allData <- allData[order(allData$age_at_web_month),]
-
-# Median split of age across all the participants
-allData[1:round(length(allData$age_at_web_month)/2),"age_group"] <- "Younger"
-allData[which(allData$group == "TD" & allData$age_group == "Younger"), "age_group"] <- "Younger TD"
-allData[which(allData$group == "ASD" & allData$age_group == "Younger"), "age_group"] <- "Younger ASD"
-
-median <- round((length(allData$age_at_web_month)/2))+1
-allData[median:length(allData$age_at_web_month),"age_group"] <- "Older"
-allData[which(allData$group == "TD" & allData$age_group == "Older"), "age_group"] <- "Older TD"
-allData[which(allData$group == "ASD" & allData$age_group == "Older"), "age_group"] <- "Older ASD"
-
-allData$ageSplit <- str_extract(allData$age_group, "Young|Old")
-
-allDataY <- allData[which(allData$ageSplit == "Young"),]
-allDataO <- allData[which(allData$ageSplit == "Old"),]
-```
-
-
-
-
 ```{r}
 library(MatchIt)
 
@@ -645,6 +693,10 @@ matchFunc <- function(seed, dataf) {
   return(outputDF)
 }
 
+allData <-
+  allData %>%
+  filter(!is.na(group))
+
 allData <- matchFunc(1234, allData)
 
 
@@ -661,14 +713,14 @@ allData <- matchFunc(1234, allData)
 allData <- allData[!colnames(allData) %in% "scq_total_date"]
 beforeMatch <- beforeMatch[!colnames(beforeMatch) %in% "scq_total_date"]
 
-jcppSample <- read.csv("/Users/jojohu/Documents/Qlab/manuscript/jcpp_submission/raw_data/allSLData.csv")
+jnddSample <- read.csv("/Users/jojohu/Documents/Qlab/manuscript_jndd/allSLData.csv")
 
-# allData <- allData[which(allData$part_id %in% jcppSample$part_id),]
+allData <- allData[which(allData$part_id %in% jnddSample$part_id),]
 
-setdiff(jcppSample$part_id, allData$part_id)
-addID <- jcppSample[which(!jcppSample$part_id %in% allData$part_id),]
-allData <- rbind(allData, beforeMatch[which(beforeMatch$part_id %in% addID$part_id),])
-setdiff(jcppSample$part_id, allData$part_id)
+# setdiff(jnddSample$part_id, allData$part_id)
+# addID <- jnddSample[which(!jnddSample$part_id %in% allData$part_id),]
+# allData <- rbind(allData, beforeMatch[which(beforeMatch$part_id %in% addID$part_id),])
+# setdiff(jnddSample$part_id, allData$part_id)
 
 which(duplicated(allData$part_id))
 ```
@@ -720,8 +772,27 @@ hist(allData_td$age_at_web_year)
 hist(allData_asd$age_at_web_year)
 ```
 
+```{r}
+allData <- allData[order(allData$age_at_web_month),]
 
-```{r, eval = F}
+# Median split of age across all the participants
+allData[1:round(length(allData$age_at_web_month)/2),"age_group"] <- "Younger"
+allData[which(allData$group == "TD" & allData$age_group == "Younger"), "age_group"] <- "Younger TD"
+allData[which(allData$group == "ASD" & allData$age_group == "Younger"), "age_group"] <- "Younger ASD"
+
+median <- round((length(allData$age_at_web_month)/2))+1
+allData[median:length(allData$age_at_web_month),"age_group"] <- "Older"
+allData[which(allData$group == "TD" & allData$age_group == "Older"), "age_group"] <- "Older TD"
+allData[which(allData$group == "ASD" & allData$age_group == "Older"), "age_group"] <- "Older ASD"
+
+allData$ageSplit <- str_extract(allData$age_group, "Young|Old")
+
+allDataY <- allData[which(allData$ageSplit == "Young"),]
+allDataO <- allData[which(allData$ageSplit == "Old"),]
+```
+
+
+```{r}
 library(reshape2)
 age_wide <- dcast(allData, group~ageSplit, length)
 print(age_wide)
@@ -753,7 +824,7 @@ subAgeASDO <- subAgeASD[which(subAgeASD$ageSplit == "Old"),]
 t.test(subAgeTDY$age_at_web_year, subAgeASDY$age_at_web_year)
 t.test(subAgeTDO$age_at_web_year, subAgeASDO$age_at_web_year)
 
-allData <-allData[, -which(names(allData) %in% c("ageSplit","age_group"))]
+# allData <-allData[, -which(names(allData) %in% c("ageSplit","age_group"))]
 ```
 
 ```{r}
@@ -891,6 +962,7 @@ rt_trialSpl <- do.call(rbind, rt_trialSpl)
 rt_trialAd <- do.call(rbind, rt_trialAd)
 
 rt_trial <- rt_trial[,!names(rt_trial) %in% "X"]
+rt_trialSpl <- rt_trialSpl[,!names(rt_trialSpl) %in% "X"]
 rt_trialAd <- rt_trialAd[,!names(rt_trialAd) %in% "X"]
 
 rt_trial <- rbind(rt_trial, rt_trialSpl)
@@ -1203,9 +1275,8 @@ hit_trial_mean <-
   ) %>%
   dplyr::select(group, task, mean_hit_trial, lower_ci, upper_ci) %>%
   dplyr::slice(match(c("lsl", "ssl", "vsl", "tsl"), task)) %>%
-  mutate(across(3:5, round, 3))
+  mutate(across(where(is.numeric), round, 2))
 
-hit_trial_mean[,-c(1:2)] <- round(hit_trial_mean[,-c(1:2)], 2)
 print(hit_trial_mean)
 ```
 
@@ -1272,6 +1343,7 @@ rt_trial_scaled <- merge(rt_trial_scaled, mean_rt, by.x = c("id", "task"), by.y 
 hist(rt_trial_scaled$reaction_time)
 hist(rt_trial_scaled$scaled_rt)
 ```
+
 
 ## SL Group Comparison RT: By Trial RT LMER
 ```{r}
@@ -1526,32 +1598,146 @@ acc_trial <- rbind(acc_trial, acc_trialSPL)
 acc_trial <-
   merge(acc_trial,
         allData[,c("part_id", "group", "gender", "age_at_web_month", "age_at_web_year", "scq_web", "scq_total",  
-                   "a_prime", "gjt_std")],
+                   "a_prime", "gjt_std", "language_age_level", "rsr_raw", "rsr_std")],
         by.x = "subj",
         by.y = "part_id",
         all.y = T)
 # Important Step, match the dataset to the current analysis
 acc_trial <- acc_trial[which(acc_trial$subj %in% allData$part_id),]
-
-acc_trial_adult <-
-  merge(acc_trial_adult,
-        blast_adult_wide[,c("part_id", "group", "gender", "age_at_web_month", "age_at_web_year")],
-        by.x = "subj",
-        by.y = "part_id",
-        all.y = T)
-
 setdiff(unique(allData$part_id), unique(acc_trial$subj))
-setdiff(unique(blast_adult_wide$part_id), unique(acc_trial_adult$subj))
 
-matchedCol <- intersect(colnames(acc_trial_adult), colnames(acc_trial))
+acc_trial$lang_group <- NULL
+acc_trial[which(acc_trial$language_age_level == "at_age" | 
+                        acc_trial$language_age_level == "above_age"), "lang_group"] <- "above_at_age"
+acc_trial[which(acc_trial$language_age_level == "slight_below_age" |
+                        acc_trial$language_age_level == "signif_below_age"), "lang_group"] <- "below_age"
+acc_trial[which(acc_trial$group == "TD"), "lang_group"] <- "TD"
 
-acc_trial_adult <- rbind(acc_trial_adult[,colnames(acc_trial_adult) %in% matchedCol],
-                         acc_trial[which(acc_trial$group =="TD"),colnames(acc_trial) %in% matchedCol])
+# acc_trial_adult <-
+#   merge(acc_trial_adult,
+#         blast_adult_wide[,c("part_id", "group", "gender", "age_at_web_month", "age_at_web_year")],
+#         by.x = "subj",
+#         by.y = "part_id",
+#         all.y = T)
+# 
+# 
+# setdiff(unique(blast_adult_wide$part_id), unique(acc_trial_adult$subj))
+
+# matchedCol <- intersect(colnames(acc_trial_adult), colnames(acc_trial))
+# 
+# acc_trial_adult <- rbind(acc_trial_adult[,colnames(acc_trial_adult) %in% matchedCol],
+#                          acc_trial[which(acc_trial$group =="TD"),colnames(acc_trial) %in% matchedCol])
 ```
+
+
+
+# Merge Items for Test Phase
+```{r}
+# Read in by-trial RT data
+
+library(dplyr)
+library(stringr)
+# From d_prime script
+dpA <- read.csv("/Users/jojohu/Documents/Qlab/manuscript_development/d_prime_all_trial_adult_td.csv", stringsAsFactors = F)
+
+dpA <- dpA[-which(str_detect(dpA$part_id, "spoli")),]
+
+dpC <- read.csv("/Users/jojohu/Documents/Qlab/manuscript_development/d_prime_all_trial_td_asd.csv", stringsAsFactors = F)
+
+dp <- rbind(dpA, dpC)
+
+dp <-
+  dp %>%
+  dplyr::select(-one_of("X")) %>%
+  filter(!is.na(part_id)) %>%
+  distinct(.)
+
+dp[which(dp$targ %in% c("do", "ku", "pi", "tu")), "task"] <- "ssl"
+dp[which(dp$targ %in% c("3A", "2A")), "task"] <- "tsl"
+dp[which(dp$target %in% c("H", "A", "C", "E")), "task"] <- "lsl"
+dp[which(dp$target %in% c("alien13", "alien24", "alien20", "alien17")), "task"] <- "vsl"
+
+target <- 
+  dp %>%
+  filter(!is.na(part_id)) %>%
+  dplyr::select(part_id, task, target, targ) %>%
+  distinct(.) %>%
+  mutate(target = coalesce(target, targ)) %>%
+  dplyr::select(part_id, task, target)
+
+target %>%
+  filter(is.na(target))
+```
+
+```{r}
+child_triplet <-
+  list.files(path = "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/acc_by_trial",
+             pattern = "*test_phase.csv", full.names = T)
+
+spoli_triplet <-
+  list.files(path = "/Users/jojohu/Documents/Qlab/spoli/data_summaries/breakdown/acc_by_trial",
+             pattern = "*test_phase.csv", full.names = T)
+
+adult_triplet <-
+  list.files(path = "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_adult/breakdown/acc_by_trial",
+             pattern = "*test_phase.csv", full.names = T)
+
+triplet_list <- rbind(adult_triplet, child_triplet, spoli_triplet)
+
+triplet_list <- lapply(triplet_list, read.csv)
+
+triplet_list <- do.call(dplyr::bind_rows, triplet_list)
+
+triplet <-
+  triplet_list %>%
+  filter(!is.na(subj)) %>%
+  distinct(.) %>%
+  mutate(triplet = coalesce(letter_triplet, syllable_triplet, tone_triplet, image_triplet)) %>%
+  mutate(task = str_extract(triplet, "letter|alien|syllable|tone")) %>%
+  mutate(task = dplyr::recode(task, "letter" = "lsl",  "alien" = "vsl", "syllable" = "ssl", "tone" = "tsl")) %>%
+  mutate(triplet = str_remove(triplet, "letter|alien|syllable|tone"))
+
+triplet <- merge(triplet, target, by.x = c("subj", "task"), by.y = c("part_id", "task"), all.x = T)
+
+triplet <-
+  triplet %>%
+  mutate(target = tolower(target), triplet = tolower(triplet)) %>%
+  mutate(target = str_remove(target, "letter|alien|syllable|tone")) %>%
+  mutate(trial_type = as.character(str_detect(triplet, target)))%>%
+  mutate(trial_type = dplyr::recode(trial_type, "TRUE" = "target",  "FALSE" = "nontarget")) %>%
+  dplyr::select(subj, task, trial_order, triplet, trial_type, target, triplet_type, triplet_order, triplet_occurance) %>%
+  filter(!is.na(task))
+
+triplet %>%
+  filter(is.na(target))
+
+unique(triplet$triplet)
+
+triplet %>%
+  group_by(subj, task, trial_type) %>%
+  dplyr::summarise(n = n()) %>%
+  head()
+```
+
+
+```{r}
+acc_trial <- 
+  merge(acc_trial, triplet, by.x = c("subj", "task", "trial_order"), by.y = c("subj", "task", "trial_order"), all.x = T)
+
+acc_trial %>%
+  filter(is.na(target))
+
+acc_trial %>%
+  group_by(subj, task, trial_type) %>%
+  dplyr::summarise(n = n()) %>%
+  head()
+```
+
+
 
 ## Change dataset
 ```{r}
-acc_trial <- acc_trial_adult
+# acc_trial <- acc_trial_adult
 unique(acc_trial$subj)
 ```
 
@@ -1569,8 +1755,8 @@ acc_trial$age_at_web_year <- as.numeric(as.character(acc_trial$age_at_web_year))
 
 acc_trial$group <- 
   factor(acc_trial$group,
-         levels = c("adult", 
-                    "TD"))
+         levels = c("TD", 
+                    "ASD"))
 acc_trial <- acc_trial[order(acc_trial$group),]
 
 acc_trial$domain <- 
@@ -1585,6 +1771,20 @@ acc_trial$modality <-
                     "visual"))
 acc_trial <- acc_trial[order(acc_trial$modality),]
 
+acc_trial$trial_type <- 
+  factor(acc_trial$trial_type,
+         levels = c("nontarget", 
+                    "target"))
+acc_trial <- acc_trial[order(acc_trial$trial_type), ]
+
+
+acc_trial$lang_group <- 
+  factor(acc_trial$lang_group,
+         levels = c("TD", 
+                    "above_at_age",
+                    "below_age"))
+acc_trial <- acc_trial[order(acc_trial$lang_group), ]
+
 head(acc_trial)
 # contr.sum(n=4)
 ```
@@ -1593,11 +1793,1113 @@ head(acc_trial)
 logacc_dom <-
   glmer(corr~group*domain*modality + (1+domain+modality|subj), data = acc_trial,
     family = binomial,
-    contrasts = list(domain = c(-0.5, 0.5), modality = c(-0.5, 0.5), group = c(-0.5,0.5)),
+    contrasts = list(domain = c(-0.5, 0.5), 
+                     modality = c(-0.5, 0.5), 
+                     group = c(-0.5,0.5)),
     control=glmerControl(optimizer = "bobyqa"))
 
 summary(logacc_dom)
 ```
+
+
+
+## Attention Effect in Test Phase by Item
+```{r}
+logacc_item <-
+  glmer(corr~group*domain*modality*trial_type + (1+domain+modality|subj), data = acc_trial,
+    family = binomial,
+    contrasts = list(domain = c(-0.5, 0.5),
+                     modality = c(-0.5, 0.5), 
+                     group = c(-0.5,0.5), 
+                     trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_item)
+
+# Domain*trial_type followup
+# Linguistic domain 
+logacc_itemLing <-
+  glmer(corr~group*modality*trial_type + (1+modality|subj), data = acc_trial[which(acc_trial$domain == "ling"),],
+    family = binomial,
+    contrasts = list(modality = c(-0.5, 0.5), 
+                     group = c(-0.5,0.5), 
+                     trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_itemLing)
+
+# Nonlinguistic domain
+logacc_itemNonling <-
+  glmer(corr~group*modality*trial_type + (1+modality|subj), data = acc_trial[which(acc_trial$domain == "nonling"),],
+    family = binomial,
+    contrasts = list(modality = c(-0.5, 0.5), 
+                     group = c(-0.5,0.5), 
+                     trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_itemNonling)
+
+
+# 
+# acc_trial %>%
+#   select(subj, group, task) %>%
+#   group_by(group, task) %>%
+#   distinct(.) %>%
+#   dplyr::summarize(n = sum(!is.na(subj)))
+```
+
+
+## Merge hit trial and age group to accuracy data
+```{r}
+acc_trial <- 
+  merge(acc_trial, hit_trialN, by.x = c("subj", "group", "task"), by.y = c("id", "group", "task"), all.x = T)
+
+acc_trial <- 
+  merge(acc_trial, unique(allData[,c("part_id", "group", "age_group", "ageSplit")]), 
+        by.x = c("subj", "group"), 
+        by.y = c("part_id", "group"), all.x = T)
+
+acc_trial <- 
+  acc_trial %>%
+  mutate(hit_rate = ifelse(task == "lsl", hit_trial_n/24, ifelse(task == "vsl", hit_trial_n/24, ifelse(task == "tsl", hit_trial_n/48, ifelse(task == "ssl", hit_trial_n/48, NA)))))
+```
+
+
+## Attention Effect in Syllable SL controlling for Hit rate 
+```{r}
+acc_trial$hit_rate_scaled <- scale(acc_trial$hit_rate)
+acc_trial[which(acc_trial$task == "ssl"), "hit_rate_ssl_scaled"] <- 
+  scale(acc_trial[which(acc_trial$task == "ssl"),]$hit_rate)
+acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "ASD"), "hit_rate_ssl_asd_scaled"] <- 
+  scale(acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "ASD"),]$hit_rate)
+acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "TD"), "hit_rate_ssl_td_scaled"] <- 
+  scale(acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "TD"),]$hit_rate)
+
+# Add hit rate as control in the linguistic domain in SSL, SSL is chosen based on t-tests and visualization of data below
+logacc_itemSSL <-
+  glmer(corr~group*trial_type*hit_rate_ssl_scaled + (1|subj), data = acc_trial[which(acc_trial$task == "ssl"),],
+    family = binomial,
+    contrasts = list(group = c(-0.5,0.5), 
+                     trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_itemSSL)
+
+logacc_itemSSL1 <-
+  glmer(corr~ trial_type*hit_rate_ssl_asd_scaled + (1|subj), data = acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "ASD"),],
+    family = binomial,
+    contrasts = list(trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_itemSSL1)
+
+logacc_itemSSL2 <-
+  glmer(corr~ trial_type*hit_rate_ssl_td_scaled + (1|subj), data = acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "TD"),],
+    family = binomial,
+    contrasts = list(trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_itemSSL2)
+```
+
+
+## Attention Effect in Syllable SL in age groups
+```{r}
+acc_trial$age_at_web_month <- as.numeric(as.character(acc_trial$age_at_web_month))
+acc_trial$age_scaled <- scale(acc_trial$age_at_web_month)
+acc_trial[which(acc_trial$task == "ssl"), "age_ssl_scaled"] <- 
+  scale(acc_trial[which(acc_trial$task == "ssl"),]$age_at_web_month)
+acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "ASD"), "age_ssl_asd_scaled"] <- 
+  scale(acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "ASD"),]$age_at_web_month)
+acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "TD"), "age_ssl_td_scaled"] <- 
+  scale(acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "TD"),]$age_at_web_month)
+acc_trial$ageSplit <- as.factor(acc_trial$ageSplit)
+
+# Add hit rate as control in the linguistic domain in SSL, SSL is chosen based on t-tests and visualization of data below
+logacc_itemAGE <-
+  glmer(corr~group*trial_type*age_ssl_scaled + (1|subj), data = acc_trial[which(acc_trial$task == "ssl"),],
+    family = binomial,
+    contrasts = list(group = c(-0.5,0.5), 
+                     trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_itemAGE)
+
+logacc_itemAGE1 <-
+  glmer(corr~group*trial_type*ageSplit + (1|subj), data = acc_trial[which(acc_trial$task == "ssl"),],
+    family = binomial,
+    contrasts = list(group = c(-0.5,0.5),
+                     ageSplit = c(-0.5, 0.5),
+                     trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_itemAGE1)
+
+logacc_itemAGE2 <-
+  glmer(corr~trial_type*age_group + (1|subj), data = acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "ASD"),],
+    family = binomial,
+    contrasts = list(age_group = c(-0.5, 0.5),
+                     trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_itemAGE2)
+
+logacc_itemAGE3 <-
+  glmer(corr~trial_type*age_group + (1|subj), data = acc_trial[which(acc_trial$task == "ssl" & acc_trial$group == "TD"),],
+    family = binomial,
+    contrasts = list(age_group = c(-0.5, 0.5),
+                     trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_itemAGE3)
+
+
+meanAccSSL <-
+  acc_trial %>%
+  filter(task == "ssl") %>%
+  group_by(subj, group, age_scaled, ageSplit, age_group, task, trial_type) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc_id = mean(corr, na.rm = T), hit_rate = mean(hit_rate, na.rm = T) , n = sum(!is.na(corr))) 
+
+lmacc_itemAGE <- lmer(mean_acc_id~group*trial_type*age_scaled + (1|subj), data = meanAccSSL,
+                      contrasts = list(group = c(-0.5,0.5), 
+                      ageSplit = c(-0.5, 0.5),
+                      trial_type = c(-0.5, 0.5)))
+
+summary(lmacc_itemAGE)
+
+lmacc_itemAGE1 <- lmer(mean_acc_id~trial_type*age_scaled + (1|subj), data = meanAccSSL[which(meanAccSSL$group == "ASD"),],
+                      contrasts = list(trial_type = c(-0.5, 0.5)))
+
+summary(lmacc_itemAGE1)
+
+lmacc_itemAGE2 <- lmer(mean_acc_id~trial_type*age_scaled + (1|subj), data = meanAccSSL[which(meanAccSSL$group == "TD"),],
+                      contrasts = list(trial_type = c(-0.5, 0.5)))
+
+summary(lmacc_itemAGE2)
+
+meanAccSSL %>%
+  group_by(group, ageSplit, task, trial_type) %>%
+  dplyr::summarize(mean_acc_id = mean(mean_acc_id, na.rm = T)) 
+```
+
+
+
+```{r}
+# Check whether the adults with high hit rate results in worse non_target trial accuracy; adults pay too much attention to the target triplet compared to children
+acc_trial %>%
+  # filter(trial_type == "nontarget") %>%
+  group_by(subj, group, age_group, task, trial_type) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc_id = mean(corr, na.rm = T), hit_rate = mean(hit_rate, na.rm = T) , n = sum(!is.na(corr))) %>%
+  group_by(group, age_group, task, trial_type) %>%
+  dplyr::summarize(mean_acc = mean(mean_acc_id, na.rm = T),  hit_rate = mean(hit_rate, na.rm = T))
+
+acc_trial %>%
+  filter(is.na(trial_type)) %>%
+  dplyr::select(subj) %>%
+  distinct(.)
+```
+
+
+## Follow-up on by trial accuracy analysis 
+### T-tests between Target vs. Nontarget Trials
+```{r}
+trialTypeAcc <-
+  acc_trial %>%
+  # filter(trial_type == "nontarget") %>%
+  group_by(subj, group, age_group, task, trial_type) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc_id = mean(corr, na.rm = T), hit_rate = mean(hit_trial_n, na.rm = T) , n = sum(!is.na(corr)))
+
+trialTypeAcc_sslA <-
+  trialTypeAcc %>%
+  filter(task == "ssl" & group == "ASD") %>%
+  dplyr::select(-one_of("n")) %>%
+  tidyr::spread(trial_type, mean_acc_id)
+
+trialTypeAcc_tslA <-
+  trialTypeAcc %>%
+  filter(task == "tsl"& group == "ASD") %>%
+  dplyr::select(-one_of("n")) %>%
+  tidyr::spread(trial_type, mean_acc_id)
+
+trialTypeAcc_lslA <-
+  trialTypeAcc %>%
+  filter(task == "lsl"& group == "ASD") %>%
+  dplyr::select(-one_of("n")) %>%
+  tidyr::spread(trial_type, mean_acc_id)
+
+trialTypeAcc_vslA <-
+  trialTypeAcc %>%
+  filter(task == "vsl"& group == "ASD") %>%
+  dplyr::select(-one_of("n")) %>%
+  tidyr::spread(trial_type, mean_acc_id)
+
+trialTypeAcc_sslTD <-
+  trialTypeAcc %>%
+  filter(task == "ssl" & group == "TD") %>%
+  dplyr::select(-one_of("n")) %>%
+  tidyr::spread(trial_type, mean_acc_id)
+
+trialTypeAcc_lslTD <-
+  trialTypeAcc %>%
+  filter(task == "lsl" & group == "TD") %>%
+  dplyr::select(-one_of("n")) %>%
+  tidyr::spread(trial_type, mean_acc_id)
+
+trialTypeAcc_vslTD <-
+  trialTypeAcc %>%
+  filter(task == "vsl" & group == "TD") %>%
+  dplyr::select(-one_of("n")) %>%
+  tidyr::spread(trial_type, mean_acc_id)
+
+trialTypeAcc_tslTD <-
+  trialTypeAcc %>%
+  filter(task == "tsl"& group == "TD") %>%
+  dplyr::select(-one_of("n")) %>%
+  tidyr::spread(trial_type, mean_acc_id)
+
+t.test(trialTypeAcc_sslA$target, trialTypeAcc_sslA$nontarget, data = trialTypeAcc_sslA, paired = TRUE)
+t.test(trialTypeAcc_tslA$target, trialTypeAcc_tslA$nontarget, data = trialTypeAcc_tslA, paired = TRUE)
+t.test(trialTypeAcc_lslA$target, trialTypeAcc_lslA$nontarget, data = trialTypeAcc_lslA, paired = TRUE)
+t.test(trialTypeAcc_vslA$target, trialTypeAcc_vslA$nontarget, data = trialTypeAcc_vslA, paired = TRUE)
+t.test(trialTypeAcc_sslTD$target, trialTypeAcc_sslTD$nontarget, data = trialTypeAcc_sslTD, paired = TRUE)
+t.test(trialTypeAcc_tslTD$target, trialTypeAcc_tslTD$nontarget, data = trialTypeAcc_tslTD, paired = TRUE)
+t.test(trialTypeAcc_lslTD$target, trialTypeAcc_lslTD$nontarget, data = trialTypeAcc_lslTD, paired = TRUE)
+t.test(trialTypeAcc_vslTD$target, trialTypeAcc_vslTD$nontarget, data = trialTypeAcc_vslTD, paired = TRUE)
+
+0.05/4
+
+library(effsize)
+cohen.d(mean_acc_id ~ trial_type | Subject(subj) , data = trialTypeAcc[which(trialTypeAcc$task == "ssl" & trialTypeAcc$group == "ASD"),], paired = T, conf.level = 0.95)
+cohen.d(mean_acc_id ~ trial_type | Subject(subj) , data = trialTypeAcc[which(trialTypeAcc$task == "ssl" & trialTypeAcc$group == "TD"),], paired = T, conf.level = 0.95)
+
+t.test(trialTypeAcc_sslA[which(trialTypeAcc_sslA$age_group == "Younger ASD"),]$target, 
+       trialTypeAcc_sslA[which(trialTypeAcc_sslA$age_group == "Younger ASD"),]$nontarget, 
+       data = trialTypeAcc_sslA[which(trialTypeAcc_sslA$age_group == "Younger ASD"),], paired = TRUE)
+
+t.test(trialTypeAcc_sslA[which(trialTypeAcc_sslA$age_group == "Older ASD"),]$target, 
+       trialTypeAcc_sslA[which(trialTypeAcc_sslA$age_group == "Older ASD"),]$nontarget, 
+       data = trialTypeAcc_sslA[which(trialTypeAcc_sslA$age_group == "Older ASD"),], paired = TRUE)
+
+t.test(trialTypeAcc_sslTD[which(trialTypeAcc_sslTD$age_group == "Older TD"),]$target, 
+       trialTypeAcc_sslTD[which(trialTypeAcc_sslTD$age_group == "Older TD"),]$nontarget, 
+       data = trialTypeAcc_sslTD[which(trialTypeAcc_sslTD$age_group == "Older TD"),], paired = TRUE)
+
+t.test(trialTypeAcc_sslTD[which(trialTypeAcc_sslTD$age_group == "Younger TD"),]$target, 
+       trialTypeAcc_sslTD[which(trialTypeAcc_sslTD$age_group == "Younger TD"),]$nontarget, 
+       data = trialTypeAcc_sslTD[which(trialTypeAcc_sslTD$age_group == "Younger TD"),], paired = TRUE)
+```
+
+### Plot Target vs. Nontarget trial Accuracy
+```{r}
+library(ggplot2)
+
+cbPalette <- c('#a6cee3','#1f78b4','#b2df8a', '#66c2a5','#fc8d62','#8da0cb', '#1b9e77','#d95f02','#7570b3')
+
+acc_trial %>%
+  # filter(trial_type == "nontarget") %>%
+  group_by(subj, group, task, trial_type) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc_id = mean(corr, na.rm = T), n = sum(!is.na(corr))) %>%
+  group_by(group, task, trial_type) %>%
+  dplyr::summarize(mean = mean(mean_acc_id, na.rm = T),  
+                   sd = sd(mean_acc_id, na.rm = T), 
+                   n = length(!is.na(mean_acc_id))) %>%
+  mutate(se = sd / sqrt(n),
+         lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
+         upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+  # filter(task == "ssl" | task == "tsl") %>%
+  mutate(group = factor(group, levels=c("TD", "ASD")),
+         task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+  mutate(Group = dplyr::recode(group, ASD = "ASD", TD = "TD"),
+         Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
+         `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) %>%
+  ggplot(aes(x = Task, y = mean, color = Group)) +
+  geom_line(aes(group = trial_type, linetype = `Triplet Type`),
+            position = position_dodge(),
+            size = 1.8,
+            color.legends = F) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se),
+                width = .05,
+                position = position_dodge()) +
+  geom_point(size = 4,
+              position = position_dodge(),
+              show.legend = FALSE
+  ) +
+  geom_point(size = 3,
+             color = "white",
+             position = position_dodge()) +
+  facet_wrap(~Group) +
+  labs(x = "SL Task",  # Change x-axis label
+       y = "Mean Accuracy (%)") +
+  scale_color_manual(values = c(cbPalette[1], cbPalette[8])) +
+  scale_linetype_manual(values=c("dotted", "solid")) +
+  guides(colour = "none") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+    plot.title = element_text(size = 26, face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold"),
+    axis.text.y = element_text(size = 16, face = "bold")
+  ) +
+  theme(
+    legend.text = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 22, face = "bold")
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    # Set plot background to white
+    legend.key  = element_rect(fill = "white"),
+    # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),
+    # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+    strip.text = element_text(size = 24, face = "bold"),
+    # Change facet text
+    strip.background = element_rect(fill = "white", size = 1),
+    # Change facet color
+    panel.spacing = unit(.05, "lines"),
+    # Add panel border
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+   ) +
+   geom_text(size = 10, color = "black",
+    data = data.frame(Group = "TD", Task = "Syllable"),
+    aes(x = 1, y = 0.76, label = paste0("***"))
+  ) +
+   geom_text(size = 10, color = "black",
+    data = data.frame(Group = "TD", Task = "Syllable"),
+    aes(x = 2, y = 0.72, label = paste0("***"))
+  ) +
+   geom_text(size = 10, color = "black",
+    data = data.frame(Group = "ASD", Task = "Syllable"),
+    aes(x = 2, y = 0.61, label = paste0("*"))
+  )
+  # geom_hline(yintercept = 0.5, size = 0.5, color = "black") +
+  #  geom_text(size = 10, color = "black",
+  #   data = data.frame(Group = "TD", Task = "Syllable"), 
+  #   aes(x = 1, y = 0.722, label = paste0("***"))
+  # )
+ 
+  
+
+ggsave("/Users/jojohu/Downloads/acc_by_trial_type.png",
+       bg="transparent",width = 32, height = 15, units = "cm")
+# ggsave("/Users/jojohu/Downloads/acc_by_trial_type_age.png",
+#        bg="transparent",width = 32, height = 32, units = "cm")
+```
+
+
+### Plot Hit Rate By Group
+```{r}
+acc_trial %>%
+  # filter(trial_type == "nontarget") %>%
+  group_by(subj, group, task, trial_type) %>%
+  dplyr::summarize(mean_hit_id = mean(hit_rate, na.rm = T), n = sum(!is.na(hit_rate))) %>%
+  group_by(group, task, trial_type) %>%
+  dplyr::summarize(mean = mean(mean_hit_id, na.rm = T),  
+                   sd = sd(mean_hit_id, na.rm = T), 
+                   n = length(!is.na(mean_hit_id))) %>%
+  mutate(se = sd / sqrt(n),
+         lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
+         upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+  # filter(task == "ssl" | task == "tsl") %>%
+  mutate(group = factor(group, levels=c("TD", "ASD")),
+         task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+  mutate(Group = dplyr::recode(group, ASD = "ASD", TD = "TD"),
+         Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
+         `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) %>%
+  ggplot(aes(x = Task, y = mean, group = Group)) +
+  geom_line(aes(linetype = Group, color = Group),
+            position = position_dodge(0.2),
+            size = 1.8) +
+  geom_errorbar(
+    aes(ymin = mean - se, ymax = mean + se),
+    width = .1,
+    position = position_dodge(0.2)
+  ) +
+  geom_point(
+    aes(color = Group),
+    size = 4,
+    position = position_dodge(0.2),
+    show.legend = FALSE
+  ) +
+  geom_point(size = 3,
+             color = "white",
+             position = position_dodge(0.2)) +
+  labs(y = "Hit Rate (%)") +
+  scale_color_manual(values = c(cbPalette[1], cbPalette[8])) +
+  theme(plot.title = element_text(hjust = 0.4)) +
+  theme(
+    plot.title = element_text(size = 26, face = "bold"),
+    axis.title.x = element_text(size = 21, face = "bold"),
+    axis.title.y = element_text(size = 16, face = "bold"),
+    axis.text = element_text(size = 16, face = "bold")
+  ) +
+  theme(
+    legend.text = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 22, face = "bold")
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    # Set plot background to white
+    legend.key  = element_rect(fill = "white"),
+    # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),
+    # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1)   # Add line to y axis
+  )
+
+ggsave("/Users/jojohu/Downloads/hit_rate_td_asd.png",
+       bg="transparent",width = 20, height = 15, units = "cm")
+```
+
+
+### Plot Target vs. Nontarget trial Correlation between Accuracy and Hit Rate
+```{r}
+library(ggpubr)
+
+meanAccHit <- 
+  acc_trial %>%
+  filter(task == "ssl") %>%
+  group_by(subj, group, task, trial_type, hit_rate) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc = mean(corr, na.rm = T), mean_hit = mean(hit_rate, na.rm = T)) %>%
+  # filter(task == "ssl" | task == "tsl") %>%
+  mutate(group = factor(group, levels=c("TD", "ASD")),
+         task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+  mutate(Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
+         `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) 
+
+meanAccHit %>%
+  ggplot(aes(x = mean_hit, y = mean_acc, linetype = `Triplet Type`, color = group)) +
+  # geom_point(size = 4,
+  #             position = position_dodge(),
+  #            shape = 1,
+  #            stroke = 1
+  # ) +
+  geom_smooth(method='lm', formula= y~x, se=F, size = 2) +
+  facet_wrap(~group) +
+  labs(x = "Hit Rate (%)",  # Change x-axis label
+       y = "Accuracy (%)") +
+  scale_color_manual(values = c(cbPalette[1],  cbPalette[8])) +
+  scale_linetype_manual(values=c("dashed", "solid")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+    plot.title = element_text(size = 26, face = "bold"),
+    axis.text.x = element_text(size = 16, face = "bold"),
+    axis.title.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold"),
+    axis.text.y = element_text(size = 16, face = "bold")
+  ) +
+  theme(
+    legend.text = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 22, face = "bold")
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    # Set plot background to white
+    legend.key  = element_rect(fill = "white"),
+    # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),
+    # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+    strip.text = element_text(size = 24, face = "bold"),
+    # Change facet text
+    strip.background = element_rect(fill = "white", size = 1),
+    # Change facet color
+    panel.spacing = unit(.05, "lines"),
+    # Add panel border
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+   ) + 
+  stat_cor(method = "pearson", size = 5, show.legend =  F) 
+  # coord_cartesian(ylim = c(0.45, 0.8))
+
+ggsave("/Users/jojohu/Downloads/trial_type_hit_corr.png",
+       bg="transparent",width = 32, height = 15, units = "cm")
+```
+
+
+### Plot Target vs. Nontarget trial Correlation between Accuracy and Age
+```{r}
+acc_trial %>%
+  filter(task == "ssl") %>%
+  group_by(subj, group, task, trial_type, age_at_web_year) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc = mean(corr, na.rm = T), mean_age = mean(age_at_web_year, na.rm = T)) %>%
+  # filter(task == "ssl" | task == "tsl") %>%
+  mutate(group = factor(group, levels=c("TD", "ASD")),
+         task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+  mutate(Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
+         `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) %>%
+  ggplot(aes(x = mean_age, y = mean_acc, color = `Triplet Type`)) +
+  geom_point(size = 4,
+              position = position_dodge(),
+             shape = 1,
+             stroke = 1
+  ) +
+  geom_smooth(method='lm', formula= y~x, se=T) +
+  facet_wrap(~group) +
+  labs(x = "Age (Years)",  # Change x-axis label
+       y = "Accuracy (%)") +
+  scale_color_manual(values = c(cbPalette[2],  cbPalette[4])) +
+  scale_linetype_manual(values=c("dotted", "solid")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+    plot.title = element_text(size = 26, face = "bold"),
+    axis.text.x = element_text(size = 16, face = "bold"),
+    axis.title.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold"),
+    axis.text.y = element_text(size = 16, face = "bold")
+  ) +
+  theme(
+    legend.text = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 22, face = "bold")
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    # Set plot background to white
+    legend.key  = element_rect(fill = "white"),
+    # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),
+    # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+    strip.text = element_text(size = 24, face = "bold"),
+    # Change facet text
+    strip.background = element_rect(fill = "white", size = 1),
+    # Change facet color
+    panel.spacing = unit(.05, "lines"),
+    # Add panel border
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+   )
+```
+
+
+### Plot Target vs. Nontarget trial Correlation between Accuracy and Age Groups
+```{r}
+acc_trial %>%
+  filter(task == "ssl") %>%
+  group_by(subj, group, task, trial_type, ageSplit) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc = mean(corr, na.rm = T), mean_age = mean(age_at_web_year, na.rm = T)) %>%
+  # filter(task == "ssl" | task == "tsl") %>%
+  mutate(group = factor(group, levels=c("TD", "ASD")),
+         task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+  mutate(Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
+         `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) %>%
+  ggplot(aes(x = ageSplit, y = mean_acc)) +
+ geom_bar(aes(fill = `Triplet Type`),
+      position = position_dodge(),
+      width = 0.9,
+      stat = "summary",
+      fun.y = "mean",
+    )  +
+  facet_wrap(~group) +
+  labs(x = "Age (Years)",  # Change x-axis label
+       y = "Accuracy (%)") +
+  scale_fill_manual(values = c(cbPalette[1], alpha(cbPalette[1], .6), cbPalette[8], alpha(cbPalette[8], .6)), guide = "none") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+    plot.title = element_text(size = 26, face = "bold"),
+    axis.text.x = element_text(size = 16, face = "bold"),
+    axis.title.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold"),
+    axis.text.y = element_text(size = 16, face = "bold")
+  ) +
+  theme(
+    legend.text = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 22, face = "bold")
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    # Set plot background to white
+    legend.key  = element_rect(fill = "white"),
+    # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),
+    # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+    strip.text = element_text(size = 24, face = "bold"),
+    # Change facet text
+    strip.background = element_rect(fill = "white", size = 1),
+    # Change facet color
+    panel.spacing = unit(.05, "lines"),
+    # Add panel border
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+   )
+```
+
+
+
+
+### Plot Target vs. Nontarget trial Accuracy based on Language Levels
+```{r}
+library(ggplot2)
+
+cbPalette <- c('#a6cee3','#1f78b4','#b2df8a', '#66c2a5','#fc8d62','#8da0cb', '#1b9e77','#d95f02','#7570b3')
+
+acc_trial %>%
+  # filter(trial_type == "nontarget") %>%
+  filter(!is.na(lang_group)) %>%
+  filter(lang_group != "TD") %>%
+  group_by(subj, lang_group, task, trial_type) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc_id = mean(corr, na.rm = T), n = sum(!is.na(corr))) %>%
+  group_by(lang_group, task, trial_type) %>%
+  dplyr::summarize(mean = mean(mean_acc_id, na.rm = T),  
+                   sd = sd(mean_acc_id, na.rm = T), 
+                   n = length(!is.na(mean_acc_id))) %>%
+  mutate(se = sd / sqrt(n),
+         lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
+         upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+  # filter(task == "ssl" | task == "tsl") %>%
+  mutate(lang_group = factor(lang_group, levels=c("TD", "above_at_age", "below_age")),
+         task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+  mutate(lang_group = dplyr::recode(lang_group, TD = "TD", above_at_age = "Above/at-age", below_age = "Below-age"),
+         Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
+         `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) %>%
+  ggplot(aes(x = Task, y = mean, color = `Triplet Type`)) +
+  geom_line(aes(group = trial_type, linetype = `Triplet Type`),
+            position = position_dodge(),
+            size = 1.8,
+            color.legends = F) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se),
+                width = .05,
+                position = position_dodge()) +
+  geom_point(size = 4,
+              position = position_dodge(),
+              show.legend = FALSE
+  ) +
+  geom_point(size = 3,
+             color = "white",
+             position = position_dodge()) +
+  facet_wrap(~lang_group) +
+  labs(x = "SL Task",  # Change x-axis label
+       y = "Mean Accuracy (%)") +
+  scale_color_manual(values = c(cbPalette[2], cbPalette[4], "dark grey")) +
+  scale_linetype_manual(values=c("dotted", "solid")) +
+  guides(colour = "none") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+    plot.title = element_text(size = 26, face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold"),
+    axis.text.y = element_text(size = 16, face = "bold")
+  ) +
+  theme(
+    legend.text = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 22, face = "bold")
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    # Set plot background to white
+    legend.key  = element_rect(fill = "white"),
+    # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),
+    # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+    strip.text = element_text(size = 24, face = "bold"),
+    # Change facet text
+    strip.background = element_rect(fill = "white", size = 1),
+    # Change facet color
+    panel.spacing = unit(.05, "lines"),
+    # Add panel border
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+   ) 
+  #  geom_text(size = 10, color = "black",
+  #   data = data.frame(lang_group = "TD", Task = "Syllable"),
+  #   aes(x = 1, y = 0.76, label = paste0("***"))
+  # ) +
+  #  geom_text(size = 10, color = "black",
+  #   data = dat,a.frame(lang_group = "TD", Task = "Syllable"),
+  #   aes(x = 2, y = 0.72, label = paste0("***"))
+  # )
+```
+
+```{r}
+allData %>%
+  # filter(trial_type == "nontarget") %>%
+  filter(lang_group != "TD") %>%
+  group_by(subj, lang_group, task, trial_type) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc_id = mean(corr, na.rm = T), n = sum(!is.na(corr))) %>%
+  group_by(lang_group, task, trial_type) %>%
+  dplyr::summarize(mean = mean(mean_acc_id, na.rm = T),  
+                   sd = sd(mean_acc_id, na.rm = T), 
+                   n = length(!is.na(mean_acc_id))) %>%
+  mutate(se = sd / sqrt(n),
+         lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
+         upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+  # filter(task == "ssl" | task == "tsl") %>%
+  mutate(lang_group = factor(lang_group, levels=c("TD", "above_at_age", "below_age")),
+         task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+  mutate(lang_group = dplyr::recode(lang_group, TD = "TD", above_at_age = "Above/at-age", below_age = "Below-age"),
+         Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
+         `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) %>%
+  ggplot(aes(x = Task, y = mean, color = `Triplet Type`)) +
+  geom_line(aes(group = trial_type, linetype = `Triplet Type`),
+            position = position_dodge(),
+            size = 1.8,
+            color.legends = F) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se),
+                width = .05,
+                position = position_dodge()) +
+  geom_point(size = 4,
+              position = position_dodge(),
+              show.legend = FALSE
+  ) +
+  geom_point(size = 3,
+             color = "white",
+             position = position_dodge()) +
+  facet_wrap(~lang_group) +
+  labs(x = "SL Task",  # Change x-axis label
+       y = "Mean Accuracy (%)") +
+  scale_color_manual(values = c(cbPalette[2], cbPalette[4], "dark grey")) +
+  scale_linetype_manual(values=c("dotted", "solid")) +
+  guides(colour = "none") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+    plot.title = element_text(size = 26, face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold"),
+    axis.text.y = element_text(size = 16, face = "bold")
+  ) +
+  theme(
+    legend.text = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 22, face = "bold")
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    # Set plot background to white
+    legend.key  = element_rect(fill = "white"),
+    # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),
+    # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+    strip.text = element_text(size = 24, face = "bold"),
+    # Change facet text
+    strip.background = element_rect(fill = "white", size = 1),
+    # Change facet color
+    panel.spacing = unit(.05, "lines"),
+    # Add panel border
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+   ) 
+```
+
+
+
+
+### Plot Target vs. Nontarget trial Accuracy based on Four Language Levels
+```{r}
+library(ggplot2)
+
+cbPalette <- c('#a6cee3','#1f78b4','#b2df8a', '#66c2a5','#fc8d62','#8da0cb', '#1b9e77','#d95f02','#7570b3')
+
+acc_trial %>%
+  # filter(trial_type == "nontarget") %>%
+  filter(!is.na(lang_group)) %>%
+  filter(lang_group != "TD") %>%
+  group_by(subj, language_age_level, task, trial_type) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc_id = mean(corr, na.rm = T), n = sum(!is.na(corr))) %>%
+  group_by(language_age_level, task, trial_type) %>%
+  dplyr::summarize(mean = mean(mean_acc_id, na.rm = T),  
+                   sd = sd(mean_acc_id, na.rm = T), 
+                   n = length(!is.na(mean_acc_id))) %>%
+  mutate(se = sd / sqrt(n),
+         lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
+         upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+  # filter(task == "ssl" | task == "tsl") %>%
+  mutate(task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+  mutate(language_age_level = dplyr::recode(language_age_level, TD = "TD", above_at_age = "Above/at-age", below_age = "Below-age"),
+         Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
+         `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) %>%
+  ggplot(aes(x = Task, y = mean, color = `Triplet Type`)) +
+  geom_line(aes(group = trial_type, linetype = `Triplet Type`),
+            position = position_dodge(),
+            size = 1.8,
+            color.legends = F) +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se),
+                width = .05,
+                position = position_dodge()) +
+  geom_point(size = 4,
+              position = position_dodge(),
+              show.legend = FALSE
+  ) +
+  geom_point(size = 3,
+             color = "white",
+             position = position_dodge()) +
+  facet_wrap(~language_age_level) +
+  labs(x = "SL Task",  # Change x-axis label
+       y = "Mean Accuracy (%)") +
+  scale_color_manual(values = c(cbPalette[2], cbPalette[4], "dark grey")) +
+  scale_linetype_manual(values=c("dotted", "solid")) +
+  guides(colour = "none") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+    plot.title = element_text(size = 26, face = "bold"),
+    axis.title.x = element_blank(),
+    axis.text.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold"),
+    axis.text.y = element_text(size = 16, face = "bold")
+  ) +
+  theme(
+    legend.text = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 22, face = "bold")
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    # Set plot background to white
+    legend.key  = element_rect(fill = "white"),
+    # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),
+    # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+    strip.text = element_text(size = 24, face = "bold"),
+    # Change facet text
+    strip.background = element_rect(fill = "white", size = 1),
+    # Change facet color
+    panel.spacing = unit(.05, "lines"),
+    # Add panel border
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+   ) 
+```
+
+
+
+### Plot Target vs. Nontarget trial Correlation between Accuracy and Hit Rate based on Language Levels
+```{r}
+acc_trial %>%
+  # filter(trial_type == "nontarget") %>%
+  filter(!is.na(lang_group)) %>%
+  filter(task == "ssl") %>%
+  group_by(subj, lang_group, task, trial_type, hit_rate) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_acc = mean(corr, na.rm = T), mean_hit = mean(hit_rate, na.rm = T)) %>%
+  # filter(task == "ssl" | task == "tsl") %>%
+  mutate(lang_group = factor(lang_group, levels=c("TD", "above_at_age", "below_age")),
+         task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+  mutate(lang_group = dplyr::recode(lang_group, TD = "TD", above_at_age = "Above/at-age", below_age = "Below-age"),
+         Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
+         `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) %>%
+  ggplot(aes(x = mean_hit, y = mean_acc, color = `Triplet Type`)) +
+  geom_point(size = 4,
+              position = position_dodge(),
+             shape = 1,
+             stroke = 1
+  ) +
+  geom_smooth(method='lm', formula= y~x, se=F) +
+  facet_wrap(~lang_group) +
+  labs(x = "Hit Rate (%)",  # Change x-axis label
+       y = "Accuracy (%)") +
+  scale_color_manual(values = c(cbPalette[2],  cbPalette[4])) +
+  scale_linetype_manual(values=c("dotted", "solid")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+    plot.title = element_text(size = 26, face = "bold"),
+    axis.text.x = element_text(size = 16, face = "bold"),
+    axis.title.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold"),
+    axis.text.y = element_text(size = 16, face = "bold")
+  ) +
+  theme(
+    legend.text = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 22, face = "bold")
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    # Set plot background to white
+    legend.key  = element_rect(fill = "white"),
+    # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),
+    # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+    strip.text = element_text(size = 24, face = "bold"),
+    # Change facet text
+    strip.background = element_rect(fill = "white", size = 1),
+    # Change facet color
+    panel.spacing = unit(.05, "lines"),
+    # Add panel border
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+   )
+```
+
+
+
+### Plot Target vs. Nontarget trial Correlation between Accuracy and Hit Rate based on RSR Raw
+```{r}
+acc_trial %>%
+  filter(task == "ssl") %>%
+  group_by(subj, group, task, trial_type, hit_rate, rsr_raw) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  dplyr::summarize(mean_corr = mean(corr, na.rm = T), mean_rsr = mean(rsr_raw, na.rm = T), mean_hit = mean(hit_rate, na.rm = T)) %>%
+  # filter(task == "ssl" | task == "tsl") %>%
+  mutate(task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+  mutate(Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
+         `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) %>%
+  ggplot(aes(x = mean_rsr, y = mean_corr, color = `Triplet Type`)) +
+  geom_point(size = 4,
+              position = position_dodge(),
+             shape = 1,
+             stroke = 1
+  ) +
+  geom_smooth(method='lm', formula= y~x, se=F) +
+  facet_wrap(~group) +
+  labs(x = "RSR Raw",  # Change x-axis label
+       y = "Accuracy (%)") +
+  scale_color_manual(values = c(cbPalette[2],  cbPalette[4])) +
+  scale_linetype_manual(values=c("dotted", "solid")) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  theme(
+    plot.title = element_text(size = 26, face = "bold"),
+    axis.text.x = element_text(size = 16, face = "bold"),
+    axis.title.x = element_text(size = 22, face = "bold"),
+    axis.title.y = element_text(size = 22, face = "bold"),
+    axis.text.y = element_text(size = 16, face = "bold")
+  ) +
+  theme(
+    legend.text = element_text(size = 22, face = "bold"),
+    legend.title = element_text(size = 22, face = "bold")
+  ) +
+  theme(
+    panel.background = element_rect(fill = "white"),
+    # Set plot background to white
+    legend.key  = element_rect(fill = "white"),
+    # Set legend item backgrounds to white
+    axis.line.x = element_line(colour = "black", size = 1),
+    # Add line to x axis
+    axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+    strip.text = element_text(size = 24, face = "bold"),
+    # Change facet text
+    strip.background = element_rect(fill = "white", size = 1),
+    # Change facet color
+    panel.spacing = unit(.05, "lines"),
+    # Add panel border
+    panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+   )
+```
+
+
+### Plot Accuracy based on Speech Therapy History in ASD
+```{r}
+library(dplyr)
+
+therapy_hist <-
+  demo_all %>%
+  dplyr::select(part_id, sped_speech, intervention_speech_language, used_words_age_mos, combined_words_age_mos, combined_phrases_age_mos) %>%
+  distinct(.)
+
+therapy_acc <- 
+  merge(acc_trial, therapy_hist, by.x = c("subj"), by.y = c("part_id"), all.x = T)
+
+plot_therapy <-
+  function(therapy_variable) {
+    therapy_acc %>%
+    filter(group == "ASD") %>%
+    # mutate(sped_speech == as.factor(sped_speech)) %>%
+    group_by(subj, group, !!sym(therapy_variable), task) %>%
+    mutate(corr = as.numeric(as.character(corr))) %>%
+    dplyr::summarize(mean_acc_id = mean(corr, na.rm = T), n = sum(!is.na(corr))) %>%
+    group_by(group, task, !!sym(therapy_variable)) %>%
+    dplyr::summarize(mean = mean(mean_acc_id, na.rm = T),  
+                     sd = sd(mean_acc_id, na.rm = T), 
+                     n = length(!is.na(mean_acc_id))) %>%
+    mutate(se = sd / sqrt(n),
+           lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
+           upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+    # filter(task == "ssl" | task == "tsl") %>%
+    mutate(group = factor(group, levels=c("TD", "ASD")),
+           task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+    mutate(Group = dplyr::recode(group, ASD = "ASD", TD = "TD"),
+           Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"), 
+           Therapy = dplyr::recode(!!sym(therapy_variable), "1" = "With Therapy", "0" = "No Therapy")) %>%
+    ggplot(aes(x = Task, y = mean, fill = Therapy)) +
+    geom_bar(
+      aes(fill = Therapy),
+      position = position_dodge(),
+      width = 0.9,
+      stat = "summary",
+      fun.y = "mean",
+    ) +
+    geom_errorbar(aes(ymin = mean - se, ymax = mean + se),
+                  width = .09,
+                  position = position_dodge(width = 0.9)) +
+    labs(x = "SL Task",  # Change x-axis label
+         y = "Mean Accuracy (%)") +
+    # scale_fill_manual(values = c("black", cbPalette[1])) +
+    guides(colour = "none") +
+    theme(plot.title = element_text(hjust = 0.5)) +
+    theme(
+      plot.title = element_text(size = 26, face = "bold"),
+      axis.title.x = element_blank(),
+      axis.text.x = element_text(size = 22, face = "bold"),
+      axis.title.y = element_text(size = 22, face = "bold"),
+      axis.text.y = element_text(size = 16, face = "bold")
+    ) +
+    theme(
+      legend.text = element_text(size = 22, face = "bold"),
+      legend.title = element_text(size = 22, face = "bold")
+    ) +
+    theme(
+      panel.background = element_rect(fill = "white"),
+      # Set plot background to white
+      legend.key  = element_rect(fill = "white"),
+      # Set legend item backgrounds to white
+      axis.line.x = element_line(colour = "black", size = 1),
+      # Add line to x axis
+      axis.line.y = element_line(colour = "black", size = 1),   # Add line to y axis
+      strip.text = element_text(size = 24, face = "bold"),
+      # Change facet text
+      strip.background = element_rect(fill = "white", size = 1),
+      # Change facet color
+      panel.spacing = unit(.05, "lines"),
+      # Add panel border
+      panel.border = element_rect(color = "black", fill = NA, size = 0.5)
+     ) +
+    geom_text(aes(label = n), position = position_dodge(0.9))
+}
+
+plot_therapy("sped_speech")
+plot_therapy("intervention_speech_language")
+```
+
+
+### Plot Language Development History with Accuracy
+```{r, warnings = F}
+plot_langdev <-
+  function(dev_var) {
+    therapy_acc %>%
+      filter(group == "ASD") %>%
+      # mutate(sped_speech == as.factor(sped_speech)) %>%
+      group_by(subj, group, !!sym(dev_var), task) %>%
+      mutate(corr = as.numeric(as.character(corr))) %>%
+      dplyr::summarize(mean_acc_id = mean(corr, na.rm = T), n = sum(!is.na(corr))) %>%
+      group_by(group, task, !!sym(dev_var)) %>%
+      dplyr::summarize(mean = mean(mean_acc_id, na.rm = T),  
+                       sd = sd(mean_acc_id, na.rm = T), 
+                       n = length(!is.na(mean_acc_id))) %>%
+      mutate(se = sd / sqrt(n),
+             lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
+             upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+      filter(!!sym(dev_var) < abs(mean(!!sym(dev_var), na.rm = T) + 3*sd(!!sym(dev_var), na.rm = T))) %>%
+      # filter(task == "ssl" | task == "tsl") %>%
+      mutate(group = factor(group, levels=c("TD", "ASD")),
+             task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
+      mutate(Group = dplyr::recode(group, ASD = "ASD", TD = "TD"),
+             Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter")) %>%
+      ggplot(aes(x = !!sym(dev_var), y = mean, color = Task)) +
+      geom_point() +
+      geom_smooth(se = F)
+}
+
+plot_langdev("used_words_age_mos")
+plot_langdev("combined_words_age_mos")
+plot_langdev("combined_phrases_age_mos")
+```
+
 
 # Section 4: SL Group Comparison Composite Scores 
 

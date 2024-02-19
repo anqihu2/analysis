@@ -409,8 +409,8 @@ rsr <-rbind(rsr, rd)
 ```
 
 ```{r}
-spoli_rsr <- read.csv("/Users/jojohu/Downloads/RSR Online Home Scores  - spoli scores (rsr_rsr1).csv", stringsAsFactors = F)[,c(1:4)]
-blast_rsr <- read.csv("/Users/jojohu/Downloads/RSR Online Home Scores  - blast scores (rsr_rsr1).csv",  stringsAsFactors = F)[,c(1:4)]
+spoli_rsr <- read.csv("/Users/jojohu/Documents/Qlab/blast_online_data/RSR Online Home Scores  - spoli scores (rsr_rsr1).csv", stringsAsFactors = F)[,c(1:4)]
+blast_rsr <- read.csv("/Users/jojohu/Documents/Qlab/blast_online_data/RSR Online Home Scores  - blast scores (rsr_rsr1).csv",  stringsAsFactors = F)[,c(1:4)]
 rsr_online <- rbind(spoli_rsr, blast_rsr)
 
 rsr_online$raw.score <- as.numeric(rsr_online$raw.score)
@@ -490,7 +490,7 @@ blast_adult_wide <- blast_adult_wide[which(blast_adult_wide$taskCount > 2),]
 ```
 
 
-# Children Gender Chi-square
+# Children Gender
 ```{r}
 allData_gender_wide <- allData[,c("part_id", "group", "gender")]
 
@@ -510,7 +510,7 @@ allData[,c("part_id", "group")]
 29+15
 ```
 
-# Adult Gender Chi-square
+# Adult Gender
 ```{r}
 adult_gender <- blast_adult_wide[,c("part_id", "group", "gender")]
 
@@ -524,7 +524,10 @@ print(gender_wide_adult)
 
 gender_wide <- rbind(gender_wide, gender_wide_adult)
 
-print(chisq.test(gender_wide_adult))
+gender_wide <- as.data.frame(gender_wide)
+
+# Something is wrong with the format of the data frame. chisq.test cannot be used. Can use this as a temp solution: https://www.socscistatistics.com/tests/chisquare2/default2.aspx
+# print(chisq.test(gender_wide))
 
 blast_adult_wide[,c("part_id", "group")]
 ```
@@ -675,6 +678,37 @@ all_rt_outlier <- unique(all_rt_outlier)
 print(all_rt_outlier)
 ```
 **Table above are all RT outliers**
+
+# SSL & TSL only data demographics before RT outlier removal
+```{r}
+allData %>%
+  filter(!is.na(tsl_acc) | !is.na(ssl_acc)) %>%
+  group_by(group) %>%
+  dplyr::summarise(n = n(), mean_age = mean(age_at_web_year), max = max(age_at_web_year), min = min(age_at_web_year))
+
+allData %>%
+  filter(!is.na(tsl_acc) & !is.na(ssl_acc)) %>%
+  dplyr::summarise(completed_ssl_tsl = n())
+
+allData %>%
+  filter(!is.na(tsl_acc) | !is.na(ssl_acc)) %>%
+  group_by(group, gender) %>%
+  dplyr::summarise(n = n(), mean_age = mean(age_at_web_year), max = max(age_at_web_year), min = min(age_at_web_year))
+
+blast_adult_wide %>%
+  filter(!is.na(tsl_acc) | !is.na(ssl_acc)) %>%
+  group_by(group) %>%
+  dplyr::summarise(n = n(), mean_age = mean(age_at_web_year), max = max(age_at_web_year), min = min(age_at_web_year))
+
+blast_adult_wide %>%
+  filter(!is.na(tsl_acc) | !is.na(ssl_acc)) %>%
+  group_by(group, gender) %>%
+  dplyr::summarise(n = n(), mean_age = mean(age_at_web_year), max = max(age_at_web_year), min = min(age_at_web_year))
+
+blast_adult_wide %>%
+  filter(!is.na(tsl_acc) & !is.na(ssl_acc)) %>%
+  dplyr::summarise(completed_ssl_tsl = n())
+```
 
 ```{r, include = F}
 outlier_extract <-
@@ -897,7 +931,7 @@ hit_trial_mean <-
     lower_ci = mean_hit_trial - qt(1 - (0.05 / 2), n - 1) * se,
     upper_ci = mean_hit_trial + qt(1 - (0.05 / 2), n - 1) * se
   ) %>%
-  dplyr::select(group, task, mean_hit_trial, lower_ci, upper_ci) %>%
+  dplyr::select(group, task, mean_hit_trial, sd, lower_ci, upper_ci) %>%
   dplyr::slice(match(c("lsl", "ssl", "vsl", "tsl"), task)) %>%
   mutate_if(is.numeric, round, 3)
 
@@ -917,6 +951,13 @@ lmer(hit_trial_n ~ group*domain*modality + (1+domain+modality|id), data = hit_tr
                         domain = c(-0.5,0.5),
                         modality = c(-0.5,0.5)))
 summary(m1_hit_trial)
+
+m2_hit_trial <-
+lmer(hit_trial_n ~ group*domain + (1|id), data = hit_trialNAd[which(hit_trialNAd$modality == "auditory"),],
+       contrasts = list(group = c(0.5,-0.5),
+                        domain = c(0.5, -0.5)),
+     control=lmerControl(optimizer = "bobyqa"))
+summary(m2_hit_trial)
 
 hitsTD <- subset(hit_trialNAd, group == "TD")
 hitsA <- subset(hit_trialNAd, group == "adult")
@@ -1090,7 +1131,7 @@ head(rt_trial_scaled)
 # No main effect of age on reaction time or scaled rt
 # hit trial N did not change group by target index by domain or group by target index by modality interactions
 lmer_slope_m1 <-
-  lmer(reaction_time ~ group*targ_index*domain*modality + hit_trial_n + sl_aprime + rt_intercept + (1+domain+modality|id),
+  lmer(reaction_time ~ group*targ_index*domain*modality + hit_trial_n + rt_intercept + (1+domain+modality|id),
     # + (0 + (modality + domain) | id),
     data = rt_trial_scaled,
     contrasts = list(
@@ -1103,10 +1144,46 @@ lmer_slope_m1 <-
 summary(lmer_slope_m1)
 
 
+lmer_slope_m2 <-
+  lmer(reaction_time ~ group*targ_index*domain + hit_trial_n + rt_intercept + (1+domain|id),
+    # + (0 + (modality + domain) | id),
+    data = rt_trial_scaled[which(rt_trial_scaled$modality == "auditory"),],
+    contrasts = list(
+      group = c(-0.5, 0.5),
+      domain = c(-0.5, 0.5)
+    ),
+    control=lmerControl(optimizer = "bobyqa")
+  )
+summary(lmer_slope_m2)
+
+
+lmer_slope_m2.1 <-
+  lmer(reaction_time ~ group*targ_index + hit_trial_n + rt_intercept + (1|id),
+    # + (0 + (modality + domain) | id),
+    data = rt_trial_scaled[which(rt_trial_scaled$modality == "auditory" & rt_trial_scaled$domain == "ling"),],
+    contrasts = list(
+      group = c(-0.5, 0.5)
+    ),
+    control=lmerControl(optimizer = "bobyqa")
+  )
+summary(lmer_slope_m2.1)
+
+lmer_slope_m2.2 <-
+  lmer(reaction_time ~ group*targ_index + hit_trial_n + rt_intercept + (1|id),
+    # + (0 + (modality + domain) | id),
+    data = rt_trial_scaled[which(rt_trial_scaled$modality == "auditory" & rt_trial_scaled$domain == "nonling"),],
+    contrasts = list(
+      group = c(-0.5, 0.5)
+    ),
+    control=lmerControl(optimizer = "bobyqa")
+  )
+summary(lmer_slope_m2.2)
+
+
 rt_trial_scaled_td <- rt_trial_scaled[which(rt_trial_scaled$group == "TD"),]
 rt_trial_scaled_td$age_scaled <- scale(rt_trial_scaled_td$age_at_web_year)
 
-lmer_slope_m2 <-
+lmer_slope_m3 <-
   lmer(scaled_rt ~ targ_index*domain*modality + hit_trial_n + sl_aprime + (1+domain+modality|id),
     # + (0 + (modality + domain) | id),
     data = rt_trial_scaled_td,
@@ -1116,13 +1193,13 @@ lmer_slope_m2 <-
     ),
     control=lmerControl(optimizer = "bobyqa")
   )
-summary(lmer_slope_m2)
+summary(lmer_slope_m3)
 
 
 
-# rtTrialModel <- summary(lmer_slope_m1)
-# rtTrialModel$coefficients <- round(rtTrialModel$coefficients, 2)
-# write.csv(rt_trial_scaled,"/Users/jojohu/Documents/Qlab/manuscript_development/rt_target_trial_adult_td.csv")
+rtTrialModel <- summary(lmer_slope_m1)
+rtTrialModel$coefficients <- round(rtTrialModel$coefficients, 2)
+write.csv(rt_trial_scaled,"/Users/jojohu/Documents/Qlab/manuscript_development/rt_target_trial_adult_td.csv")
 ```
 
 
@@ -1199,7 +1276,7 @@ pairwise.t.test(taData$ssl_slope, taData$age_group)
 ```{r}
 t_test_multi_pair_slope <- 
   function(x,y){
-  test <- t.test(x, y, alternative = "less")
+  test <- t.test(x, y)
 
   data.frame(p_value = test$p.value,
              df = test$parameter,
@@ -1462,11 +1539,11 @@ target %>%
 ```
 
 ```{r}
-adult_triplet <-
+child_triplet <-
   list.files(path = "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/acc_by_trial",
              pattern = "*test_phase.csv", full.names = T)
 
-child_triplet <-
+adult_triplet <-
   list.files(path = "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_adult/breakdown/acc_by_trial",
              pattern = "*test_phase.csv", full.names = T)
 
@@ -1493,7 +1570,8 @@ triplet <-
   mutate(target = str_remove(target, "letter|alien|syllable|tone")) %>%
   mutate(trial_type = as.character(str_detect(triplet, target)))%>%
   mutate(trial_type = dplyr::recode(trial_type, "TRUE" = "target",  "FALSE" = "nontarget")) %>%
-  select(subj, task, trial_order, triplet, trial_type, target, triplet_type, triplet_order, triplet_occurance)
+  dplyr::select(subj, task, trial_order, triplet, trial_type, target, triplet_type, triplet_order, triplet_occurance) %>%
+  filter(!is.na(task))
 
 triplet %>%
   filter(is.na(target))
@@ -1563,17 +1641,25 @@ logacc_dom <-
 
 summary(logacc_dom)
 
+logacc_dom_m2 <-
+  glmer(corr~group*domain + (1+domain|subj), data = acc_trial[which(acc_trial$modality == "auditory"),],
+    family = binomial,
+    contrasts = list(domain = c(-0.5, 0.5), group = c(-0.5,0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_dom_m2)
+
 acc_trial_td <- acc_trial[which(acc_trial$group == "TD"),]
 
 acc_trial_td$age_scaled <- scale(acc_trial_td$age_at_web_year)
 
-logacc_dom_m2 <-
+logacc_dom_m3 <-
   glmer(corr~age_at_web_year*domain*modality + (1+domain+modality|subj), data = acc_trial_td,
     family = binomial,
     contrasts = list(domain = c(-0.5, 0.5), modality = c(-0.5, 0.5)),
     control=glmerControl(optimizer = "bobyqa"))
 
-summary(logacc_dom_m2)
+summary(logacc_dom_m3)
 
 acc_trial$hit_scaled <- scale(acc_trial$hit_trial_n)
 
@@ -1584,6 +1670,18 @@ logacc_dom_m3 <-
     control=glmerControl(optimizer = "bobyqa"))
 
 summary(logacc_dom_m3)
+
+logacc_dom4 <-
+  glmer(corr~group*domain + (1+domain|subj), data = acc_trial[which(acc_trial$modality == "auditory"),],
+    family = binomial,
+    contrasts = list(domain = c(-0.5, 0.5), group = c(-0.5,0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_dom4)
+
+accModel <- summary(logacc_dom)
+accModel <- round(accModel$coefficients, 2)
+write.csv(as.data.frame(accModel), "/Users/jojohu/Documents/Qlab/manuscript_development/accModel.csv")
 ```
 
 
@@ -1627,6 +1725,16 @@ acc_trial %>%
   filter(is.na(trial_type)) %>%
   select(subj) %>%
   distinct(.)
+
+logacc_item2 <-
+  glmer(corr~group*domain*trial_type + (1+domain+trial_type|subj), data = acc_trial[which(acc_trial$modality == "auditory"),],
+    family = binomial,
+    contrasts = list(domain = c(-0.5, 0.5),
+                     group = c(-0.5,0.5), 
+                     trial_type = c(-0.5, 0.5)),
+    control=glmerControl(optimizer = "bobyqa"))
+
+summary(logacc_item2)
 ```
 
 
@@ -1716,6 +1824,8 @@ targAccW %>%
   group_by(group, task, hit_group) %>%
   dplyr::summarize(targ_nontarg = mean(targ_nontarg, na.rm = T), hit_rate = mean(hit_rate, na.rm = T) , n = length(unique(subj)))
 
+library(ggplot2)
+
 targAccW %>%
   filter(task == "ssl") %>%
   filter(target > 0.5 | nontarget > 0.5) %>%
@@ -1754,9 +1864,10 @@ acc_trial %>%
   mutate(se = sd / sqrt(n),
          lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
          upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
-  filter(task == "ssl" | task == "tsl") %>%
+  mutate(group = factor(group, levels=c("adult", "TD")),
+           task = factor(task, levels=c("lsl", "ssl", "vsl", "tsl"))) %>%
   mutate(Group = dplyr::recode(group, adult = "Adult", TD = "Child"),
-         Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone"),
+         Task = dplyr::recode(task, ssl = "Syllable", tsl = "Tone", vsl = "Image", lsl = "Letter"),
          `Triplet Type` = dplyr::recode(trial_type, target = "Target", nontarget = "Nontarget")) %>%
   ggplot(aes(x = Task, y = mean, color = Group)) +
   geom_line(aes(group = trial_type, linetype = `Triplet Type`),
@@ -1806,22 +1917,26 @@ acc_trial %>%
     panel.spacing = unit(.05, "lines"),
     # Add panel border
     panel.border = element_rect(color = "black", fill = NA, size = 0.5)
-   ) +
-  geom_hline(yintercept = 0.5, size = 0.5, color = "black") +
-   geom_text(size = 10, color = "black",
-    data = data.frame(Group = "Adult", Task = "Syllable"), 
-    aes(x = 1, y = 0.725, label = paste0("**"))
-  ) +
-  geom_hline(yintercept = 0.5, size = 0.5, color = "black") +
-   geom_text(size = 10, color = "black",
-    data = data.frame(Group = "Child", Task = "Syllable"), 
-    aes(x = 1, y = 0.722, label = paste0("***"))
-  )
+   ) 
+  # geom_hline(yintercept = 0.5, size = 0.5, color = "black") +
+  #  geom_text(size = 10, color = "black",
+  #   data = data.frame(Group = "Adult", Task = "Syllable"), 
+  #   aes(x = 1, y = 0.725, label = paste0("**"))
+  # ) +
+  # geom_hline(yintercept = 0.5, size = 0.5, color = "black") +
+  #  geom_text(size = 10, color = "black",
+  #   data = data.frame(Group = "Child", Task = "Syllable"), 
+  #   aes(x = 1, y = 0.722, label = paste0("***"))
+  # )
  
   
 
-ggsave("/Users/jojohu/Documents/Qlab/manuscript_development/acc_by_trial_type.png",
-       bg="transparent",width = 25, height = 15, units = "cm")
+# ggsave("/Users/jojohu/Documents/Qlab/manuscript_development/acc_by_trial_type.png",
+#        bg="transparent",width = 30, height = 15, units = "cm")
+
+ggsave("/Users/jojohu/Downloads/acc_by_trial_type_adult.png",
+       bg="transparent",width = 30, height = 15, units = "cm")
+
 ```
 
 
@@ -1850,7 +1965,7 @@ summary(logacc_hit_td)
 
 ### Posthoc t-test on the effect of Hit Rate and Domain when split by Group
 ```{r}
-acc_hit_mean<-
+acc_hit_mean <-
   acc_trial %>%
   filter(!is.na(hit_group)) %>%
   mutate(corr = as.numeric(as.character(corr))) %>%
@@ -1863,7 +1978,6 @@ acc_hit_mean<-
          upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
   # dplyr::select(part_id, task, sentence, mean, se, lower_ci, upper_ci, n) %>%
   mutate_if(is.numeric, round, 2) 
-
 
 acc_hitAd <-
   acc_hit_mean %>%
@@ -1885,6 +1999,31 @@ t.test(acc_hitTD[which(acc_hitTD$domain == "ling" & acc_hitTD$hit_group == "high
 
 t.test(acc_hitTD[which(acc_hitTD$domain == "nonling" & acc_hitTD$hit_group == "higher_hit"),]$mean, 
        acc_hitTD[which(acc_hitTD$domain == "nonling" & acc_hitTD$hit_group == "lower_hit"),]$mean)
+
+# Attention facilitation seems to be nonlinear as a function of attention. Adults with higher hit rate performed similarly with those with lower hit rate, while children with higher hit rate outperformed those with lower hit rate in Syllable SL
+acc_hit_mean <-
+  acc_trial %>%
+  filter(!is.na(hit_group)) %>%
+  mutate(corr = as.numeric(as.character(corr))) %>%
+  group_by(subj, group, hit_group, task) %>%
+  dplyr::summarise(mean = mean(corr, na.rm = T), 
+                   sd = sd(corr, na.rm = T), 
+                   n = length(!is.na(corr))) %>%
+  mutate(se = sd / sqrt(n),
+         lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
+         upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
+  # dplyr::select(part_id, task, sentence, mean, se, lower_ci, upper_ci, n) %>%
+  mutate_if(is.numeric, round, 2) 
+
+t.test(acc_hit_mean[which(acc_hit_mean$group == "TD" & acc_hit_mean$task == "ssl" & 
+                            acc_hit_mean$hit_group == "higher_hit"),]$mean, 
+       acc_hit_mean[which(acc_hit_mean$group == "TD" & acc_hit_mean$task == "ssl" & 
+                            acc_hit_mean$hit_group == "lower_hit"),]$mean)
+
+t.test(acc_hit_mean[which(acc_hit_mean$group == "adult" & acc_hit_mean$task == "ssl" & 
+                            acc_hit_mean$hit_group == "higher_hit"),]$mean, 
+       acc_hit_mean[which(acc_hit_mean$group == "adult" & acc_hit_mean$task == "ssl" & 
+                            acc_hit_mean$hit_group == "lower_hit"),]$mean)
 ```
 
 
@@ -1910,11 +2049,11 @@ summary(logacc_dom_m4)
 
 
 
-## SL Group Comparison Accuracy: Post-hoc T-test TD vs. ASD
+## SL Group Comparison Accuracy: Post-hoc T-test Adults vs. TD
 ```{r}
 t_test_multi_pair <- 
   function(x,y){
-  test <- t.test(x, y, alternative = "greater")
+  test <- t.test(x, y)
 
   data.frame(p_value = test$p.value,
              df = test$parameter,
@@ -2008,7 +2147,7 @@ getDescripStat <- function(group, col) {
       mutate(se = sd / sqrt(n),
              lower_ci = mean - qt(1 - (0.05 / 2), n - 1) * se,
              upper_ci = mean + qt(1 - (0.05 / 2), n - 1) * se) %>%
-      select(!!as.symbol(group), mean, lower_ci, upper_ci) %>%
+      select(!!as.symbol(group), mean, sd, lower_ci, upper_ci) %>%
     slice(match(c("adult", "TD"), group))
 }
 
