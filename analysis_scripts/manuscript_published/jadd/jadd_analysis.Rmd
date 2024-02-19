@@ -8,9 +8,8 @@ output: html_document
 # Manuscript Analysis Cleaned (02/18/2021)
 
 ``` {r}
-setwd("/Users/jojohu/Documents/Qlab/manuscript_jndd")
 
-allData <- read.csv("/Users/jojohu/Documents/Qlab/manuscript_jndd/allSLData.csv")
+allData <- read.csv("/allSLData.csv")
 
 allData[which(duplicated(allData$part_id)),]
 
@@ -25,7 +24,7 @@ allData$rsr_raw <- as.numeric(as.character(allData$rsr_raw))
 allData$rsr_std <- as.numeric(as.character(allData$rsr_std))
 rsrStdList <- list()
 # Extract RSR standard scores
-rawStd <- read.csv("/Users/jojohu/Documents/Qlab/manuscript_jndd/rsr_raw_std_table.csv")
+rawStd <- read.csv("rsr_raw_std_table.csv")
 
 for(i in 1:nrow(allData)) {
   currentAge <- allData[i, "age_at_web_year"] 
@@ -179,11 +178,11 @@ t.test(langSample[which(langSample$group == "TD"),]$scq_total, langSample[which(
 # TO DO: save just the ados data and read in just the ados scores before uploading to github
 library(stringr)
 
-source <- read.csv("/Users/jojohu/Downloads/QLABBLASTProject-Participantsource_DATA_LABELS_2022-10-16_0830.csv", stringsAsFactors = F)
+source <- read.csv("QLABBLASTProject-Participantsource_DATA_LABELS_2022-10-16_0830.csv", stringsAsFactors = F)
 
 colnames(source)  <- str_remove(colnames(source), "How.was.this.participant.recruited...choice.")
 
-spark_diagnosis <- read.csv("/Users/jojohu/Documents/Qlab/blast_online_data/demographic_data/spark_diagnosis.csv")
+spark_diagnosis <- read.csv("spark_diagnosis.csv")
 
 allData_asd %>%
   mutate(sample_source = str_extract(part_id, "\\S+(?=_c_)")) %>%
@@ -213,14 +212,6 @@ source %>%
 # ASD diagnosis source
 spark_diagnosis <- merge(allData_asd, spark_diagnosis, all.x = T)
 
-df1 <- as.data.frame(do.call(rbind, str_split(spark_diagnosis$diagnosis_source_latest, "\\|")))
-
-data.frame(row = rownames(df1), 
-           name = rep(names(df1), each = ncol(df1)), 
-           value = unlist(df1), row.names = NULL) %>%
-  select(value) %>%
-  distinct(.)
-
 spark_diagnosis %>%
   mutate(multiple = str_extract(diagnosis_source_latest, "\\|")) %>%
   mutate(diagnosis_source = ifelse(multiple == "|", "multiple", NA)) %>%
@@ -228,13 +219,6 @@ spark_diagnosis %>%
   group_by(diagnosis_source) %>%
   dplyr::summarise(n = n()) %>%
   arrange(desc(n))
-
-# ADOS scores
-ados <- read.csv("/Users/jojohu/Documents/Qlab/bucld_2019_followup/drive_checklist.csv")
-
-ados %>%
-  dplyr::select(Participant.ID, ados_overall, ados_comparison, ados_severity) %>%
-  filter(Participant.ID %in% allData_asd$part_id)
 ```
 
 
@@ -242,10 +226,10 @@ ados %>%
 ## Preprocess by trial RT data, remove the RT Slope outliers
 ```{r, include = F}
 input_path5 <-
-  "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/rt_by_trial"
+  "rt_by_trial/blast"
 
 input_path6 <-
-  "/Users/jojohu/Documents/Qlab/spoli/data_summaries/breakdown/rt_by_trial"
+  "rt_by_trial/spoli"
 
 rtlist <-
   list.files(path = input_path5,
@@ -320,7 +304,7 @@ print(merge(child_rt_outlier, allData[,c("part_id", "group")]))
 
 ## Extract a-prime and remove outliers with a-prime of 3 SDs away from the group
 ```{r}
-d_prime <- read.csv("/Users/jojohu/Documents/Qlab/manuscript_jndd/d_prime.csv")
+d_prime <- read.csv("d_prime.csv")
 
 d_prime <- d_prime[which(d_prime$part_id %in% allData$part_id),]
 d_prime <- merge(d_prime, allData, by = c("part_id"), all.x = T)
@@ -445,8 +429,6 @@ print(taskcomp_count)
 
 ## Preprocess by trial RT data, remove the RT Slope outliers
 ```{r, include = F}
-# rt_trial <- read.csv("/Users/jojohu/Documents/Qlab/manuscript_jndd/rt_trial.csv")
-
 rt_trial <- rt_trial[which(rt_trial$id %in% allData$part_id),]
 
 rt_trial <-
@@ -851,12 +833,10 @@ sapply(colnames(allData_asd)[str_detect(colnames(allData_asd), "sl_slope")],
 ```{r}
 ## SL Group Comparison By Trial Accuracy GLMER
 input_path3 <-
-  "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_child/breakdown/acc_by_trial/acc_by_trial"
+  "acc_by_trial/blast"
 
-input_path4 <- "/Users/jojohu/Documents/Qlab/spoli/data_summaries/breakdown/acc_by_trial"
+input_path4 <- "acc_by_trial/spoli"
 
-input_path5 <-
-  "/Users/jojohu/Documents/Qlab/blast_online_data/data_summaries/blast_online_adult/breakdown/acc_by_trial"
 
 acclist <-
   list.files(path = input_path3,
@@ -866,10 +846,6 @@ acclistSPL <-
   list.files(path = input_path4,
              pattern = "*by_trial.csv", full.names = T)
 
-acclistAdult <-
-  list.files(path = input_path5,
-             pattern = "*by_trial.csv", full.names = T)
-
 
 library("stringr")
 
@@ -877,13 +853,9 @@ tname <- str_extract(basename(acclist), "(?<=blast_)\\S{3}")
 
 tnameSPL <- str_extract(basename(acclistSPL), "(?<=spoli_)\\S{3}")
 
-tnameAdult <- str_extract(basename(acclistAdult), "(?<=blast_)\\S{3}")
-
 acc_trial <- lapply(acclist, read.csv)
 
 acc_trialSPL <- lapply(acclistSPL, read.csv)
-
-acc_trial_adult <- lapply(acclistAdult, read.csv)
 
 for (i in 1:length(acc_trial)) {
   acc_trial[[i]]$task <-tname[i]
@@ -902,20 +874,11 @@ acc_trialSPL <- do.call(rbind, acc_trialSPL)
 
 acc_trialSPL <- acc_trialSPL[,!names(acc_trialSPL) %in% "X"]
 
-for (i in 1:length(acc_trial_adult)) {
-  acc_trial_adult[[i]]$task <-tnameAdult[i]
-}
-
-acc_trial_adult <- do.call(rbind, acc_trial_adult)
-
-acc_trial_adult <- acc_trial_adult[,!names(acc_trial_adult) %in% "X"]
-
 acc_trial <- rbind(acc_trial, acc_trialSPL)
 ```
 
 
 ```{r}
-# acc_trial <- read.csv("acc_trial.csv")
 acc_trial <- acc_trial[which(acc_trial$subj %in% allData$part_id),]
 
 acc_trial <-
@@ -2393,7 +2356,7 @@ acc_within_stat %>%
   geom_text(aes(x = 2, y = 0.7, label = paste0("*")), size = 10, color = "black") +
   geom_text(aes(x = 3, y = 0.7, label = paste0("**")), size = 10, color = "black")
 
-ggsave("behavioral_acc_across_group.png", bg="transparent",width = 15, height = 15, units = "cm")
+# ggsave("behavioral_acc_across_group.png", bg="transparent",width = 15, height = 15, units = "cm")
 ```
 
 
@@ -2510,7 +2473,7 @@ slope_within_stat %>%
   geom_text(aes(x = 3, y = -0.034, label = paste0("†")), size = 7, color = "black")
 
  
-ggsave("behavioral_slope_across_group.png", width = 15, height = 15, units = "cm")
+# ggsave("behavioral_slope_across_group.png", width = 15, height = 15, units = "cm")
 ```
 
 
@@ -2598,8 +2561,8 @@ composite_within_stat %>%
   geom_text(aes(x = 1, y = 0.4, label = paste0("***")), size = 10, color = "black") +
   geom_text(aes(x = 2, y = 0.4, label = paste0("**")), size = 10, color = "black")
 
-ggsave("behavioral_composite_across_group.png", bg = "transparent",
-       width = 15, height = 15, units = "cm")
+# ggsave("behavioral_composite_across_group.png", bg = "transparent",
+#        width = 15, height = 15, units = "cm")
 ```
 
 
@@ -2818,8 +2781,8 @@ compositeAgePlot %>%
       Domain = 0
     )
   ) 
-ggsave("composite_age_median.png",
-        bg="transparent",width = 30, height = 15, units = "cm")
+# ggsave("composite_age_median.png",
+#         bg="transparent",width = 30, height = 15, units = "cm")
 ```
 
 
@@ -2954,9 +2917,6 @@ ggplot(aes(x = composite_ling, y = a_prime, color = group)) +
            aes(x = composite_ling, y = a_prime),
            method = "pearson", label.x = 0, label.y = 0.55,
            inherit.aes = F, color = cbPalette[8], size = 5)
-
-# ggsave("/Users/jojohu/Documents/Qlab/iascl_2019_2020/iascl_2021/composite_ssl_gjt.png",
-#         bg="transparent", width = 15, height = 15, units = "cm")
 ```
 
 # RSR Standard and Composite Ling SL
@@ -3064,8 +3024,8 @@ compositeAge %>%
               aes(x = composite_ling, y = rsr_raw),
               method=lm, se=F, show.legend = F, inherit.aes = F, color = "black")
   
-ggsave("/Users/jojohu/Documents/Qlab/manuscript_jndd/rsr_composite_ling.png",
-        bg="transparent", dpi = 300, units = "cm")
+# ggsave("rsr_composite_ling.png",
+#         bg="transparent", dpi = 300, units = "cm")
 ```
 
 # Language Levels and RSR
@@ -3182,8 +3142,8 @@ compositeLanglevel %>%
 ```
 
 ```{r}
-ggsave("/Users/jojohu/Documents/Qlab/manuscript_jndd/lang_level_composite_ling.png",
-        bg="transparent", width = 25, height = 15, units = "cm")
+# ggsave("lang_level_composite_ling.png",
+#         bg="transparent", width = 25, height = 15, units = "cm")
 ```
 
 
@@ -3232,9 +3192,6 @@ ggplot(aes(x = age_at_web_year, y = composite_vsl, color = group)) +
            aes(x = age_at_web_year, y = composite_vsl),
            method = "pearson", 
            inherit.aes = F, color = cbPalette[8], size = 5)
-
-# ggsave("/Users/jojohu/Documents/Qlab/iascl_2019_2020/iascl_2021/composite_ssl_gjt.png",
-#         bg="transparent", width = 15, height = 15, units = "cm")
 ```
 
 
@@ -3280,9 +3237,6 @@ ggplot(aes(x = age_at_web_year, y = composite_ssl, color = Group)) +
 #            aes(x = age_at_web_year, y = composite_ssl),
 #            method = "pearson", 
 #            inherit.aes = F, color = cbPalette[8], size = 5)
-
-ggsave("/Users/jojohu/Documents/Qlab/iascl_2019_2020/iascl_2021/composite_ssl_age.png",
-        bg="transparent", width = 15, height = 15, units = "cm")
 ```
 
 
@@ -3327,9 +3281,6 @@ ggplot(aes(x = age_at_web_year, y = vsl_acc, color = group)) +
            aes(x = age_at_web_year, y = vsl_acc),
            method = "pearson", 
            inherit.aes = F, color = cbPalette[8], size = 5)
-
-# ggsave("/Users/jojohu/Documents/Qlab/iascl_2019_2020/iascl_2021/composite_ssl_gjt.png",
-#         bg="transparent", width = 15, height = 15, units = "cm")
 ```
 
 
@@ -3375,9 +3326,6 @@ ggplot(aes(x = age_at_web_year, y = vsl_slope, color = group)) +
            aes(x = age_at_web_year, y = vsl_slope),
            method = "pearson", 
            inherit.aes = F, color = cbPalette[8], size = 5)
-
-# ggsave("/Users/jojohu/Documents/Qlab/iascl_2019_2020/iascl_2021/composite_ssl_gjt.png",
-#         bg="transparent", width = 15, height = 15, units = "cm")
 ```
 
 
@@ -3423,9 +3371,6 @@ ggplot(aes(x = vsl_acc, y = vsl_slope, color = group)) +
            aes(x = vsl_acc, y = vsl_slope),
            method = "pearson", 
            inherit.aes = F, color = cbPalette[8], size = 5)
-
-# ggsave("/Users/jojohu/Documents/Qlab/iascl_2019_2020/iascl_2021/composite_ssl_gjt.png",
-#         bg="transparent", width = 15, height = 15, units = "cm")
 ```
 
 
@@ -3472,9 +3417,6 @@ ggplot(aes(x = ssl_acc, y = lsl_acc, color = Group)) +
            aes(x = ssl_acc, y = lsl_acc),
            method = "pearson", 
            inherit.aes = F, color = cbPalette[8], size = 5)
-
-ggsave("/Users/jojohu/Documents/Qlab/iascl_2019_2020/iascl_2021/ssl_lsl_acc.png",
-        bg="transparent", width = 15, height = 15, units = "cm")
 ```
 
 
