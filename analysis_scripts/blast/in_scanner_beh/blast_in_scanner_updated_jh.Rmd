@@ -1,0 +1,870 @@
+---
+title: "blast_in_scanner_beh_updated_jh"
+author: "Jojo Hu"
+date: '2023-12-07'
+output: html_document
+---
+**This is an updated and more efficient script to process in-scanner behavioral data**
+
+# Clean Data
+```{r}
+input_path1 <- "/Users/jojohu/Documents/Qlab/fmri/in_scanner_beh_analysis/adult_raw/sl_raw_data/"
+input_path2 <- "/Users/jojohu/Documents/Qlab/fmri/in_scanner_beh_analysis/child_raw/sl_raw_data/"
+    
+adultFile <- list.files(path = input_path1, pattern = "*.csv", full.names = T)
+childFile <- list.files(path = input_path2, pattern = "*.csv", full.names = T)
+allFile <- append(adultFile, childFile)
+
+library(stringr)
+library(dplyr)
+
+allFile <- allFile[str_detect(allFile, "blast_(a|c)_\\S+_(auditory|visual)_\\S{1}.csv")]
+
+# read.table("/Users/jojohu/Documents/Qlab/fmri/in_scanner_beh_analysis/adult_raw/sl_raw_data/blast_a_001_visual_1.csv", sep= ",",  colClasses = "character", header = T)
+
+read_data <- function(x) {
+  # Need to use read.table. For some reason, the ltarget column is always read in as logical when using read.csv
+  temp <- read.table(x, sep= ",",  colClasses = "character", header = T)
+  
+  
+  
+  temp$repetition <- as.character(temp$repetition)
+  temp$PartID <- as.character(temp$PartID)
+  temp$date <- as.character(temp$date)
+  
+  if(nrow(temp) > 0) {
+    temp$row_number <- seq(1:nrow(temp))
+  }
+  
+  if(length(which(colnames(temp) %in% "ltarget")) > 0) {
+    temp$ltarget <- as.character(temp$ltarget)
+  }
+  if(length(which(colnames(temp) %in% "frameRate")) > 0) {
+    temp$frameRate <- as.character(temp$frameRate)
+  }
+  if(length(which(colnames(temp) %in% "expName")) > 0) {
+    temp$expName <- as.character(temp$expName)
+  }
+  if(length(which(colnames(temp) %in% "starget")) > 0) {
+    temp$starget <- as.character(temp$starget)
+  }
+  if(length(which(colnames(temp) %in% "ttarget")) > 0) {
+    temp$ttarget <- as.character(temp$ttarget)
+  }
+  
+  return(temp)
+}
+
+allIS <- lapply(allFile, read_data)
+
+allIS <- do.call(dplyr::bind_rows, allIS)
+
+
+visualIS <- 
+  allIS %>%
+  dplyr::select(PartID, Run, row_number, condition, expName, trialnum, date, 
+                starget, ttarget, vtarget, ltarget, 
+                soundFile, image,
+                sound_block_key_resp.rt, tone_block_key_resp.rt, v_block_trial_key_resp.rt, l_block_trial_key_resp.rt, blank_block_trial_key_resp.rt) %>%
+  filter(expName == "visual") %>%
+  #filter out all blank trials
+  filter(condition != "B")
+
+visualIS <- 
+  visualIS %>%
+  mutate(image = ifelse(str_detect(image, "Alien"), str_extract(image, "[:digit:]+"), ifelse(str_detect(image, "[:alpha:].png"), str_remove(image, ".png"), image))) %>%
+  mutate(task = ifelse(str_detect(image, "[:digit:]+"), "image", ifelse(str_detect(image, "[:upper:]+"), "letter", NA)))
+
+
+auditoryIS <- 
+  allIS %>%
+  dplyr::select(PartID, Run, row_number, condition, expName, trialnum, date, 
+                starget, ttarget, vtarget, ltarget, 
+                soundFile, image,
+                sound_block_key_resp.rt, tone_block_key_resp.rt, v_block_trial_key_resp.rt, l_block_trial_key_resp.rt, blank_block_trial_key_resp.rt) %>%
+  filter(expName == "auditory") %>%
+  #filter out all blank trials
+  filter(condition != "B")
+
+auditoryIS <- 
+  auditoryIS %>%
+  mutate(soundFile = ifelse(str_detect(soundFile, "[:digit:]{1}[:UPPER:]{1}"), str_remove(soundFile, ".wav"), ifelse(str_detect(soundFile, "[:lower:]{2}"), str_remove(soundFile, ".wav"), soundFile))) %>%
+  mutate(task = ifelse(str_detect(soundFile, "[:digit:]{1}[:UPPER:]{1}"), "tone", ifelse(str_detect(soundFile, "[:lower:]{2}"), "syllable", NA)))
+
+head(visualIS)
+```
+
+
+# Prep for calculating response time during the familiarization phase
+```{r}
+# Visual SL
+# Adjust reaction times based on trial position relative to the target trial
+visualIS <-
+  visualIS %>%
+  arrange(PartID, Run, condition, trialnum) %>%
+  mutate(v_block_trial_key_resp.rt = as.numeric(as.character(v_block_trial_key_resp.rt)), 
+         l_block_trial_key_resp.rt = as.numeric(as.character(l_block_trial_key_resp.rt))) %>%
+  mutate(v_block_trial_key_resp.rt = v_block_trial_key_resp.rt*1000, 
+         l_block_trial_key_resp.rt = l_block_trial_key_resp.rt*1000) %>%
+  mutate(key_press = ifelse(!is.na(v_block_trial_key_resp.rt) | !is.na(l_block_trial_key_resp.rt), 1, NA),
+         # Set up a column for target trial reaction time calculation later
+         target_trial = ifelse(image == vtarget | image == ltarget, 0, NA))
+
+# image immediately following target
+visualIS$target_follow <- append(NA, visualIS$target_trial[1:(length(visualIS$target_trial)-1)])
+
+
+# Now, add in the reaction time adjustment for corresponding trial types
+# Response time window is 0 ~ 1000 ms only
+visualIS <- 
+  visualIS %>%
+  mutate(target_follow = ifelse(target_follow == 0, 1000, NA)) %>%  # Response on the image immediately following the target, reaction time + 1000
+  mutate(time_adjustment = coalesce(target_trial, target_follow)) %>%
+  # Define type of hit
+  mutate(hit_type = ifelse(time_adjustment == 1000, "delayed_hit", ifelse(time_adjustment == 0, "hit", NA))) %>%
+  # Calculate reaction time
+  mutate(letter_rt = as.numeric(as.character(l_block_trial_key_resp.rt)) + time_adjustment,
+         image_rt = as.numeric(as.character(v_block_trial_key_resp.rt)) + time_adjustment) %>%
+  mutate(rt = coalesce(letter_rt, image_rt))
+
+```
+
+```{r}
+# Auditory SL
+# Adjust reaction times based on trial position relative to the target trial
+auditoryIS <-
+  auditoryIS %>%
+  arrange(PartID, Run, condition, trialnum) %>%
+  mutate(tone_block_key_resp.rt = as.numeric(as.character(tone_block_key_resp.rt)), 
+         sound_block_key_resp.rt = as.numeric(as.character(sound_block_key_resp.rt))) %>%
+  mutate(tone_block_key_resp.rt = tone_block_key_resp.rt*1000,
+         sound_block_key_resp.rt = sound_block_key_resp.rt*1000) %>%
+  mutate(key_press = ifelse(!is.na(tone_block_key_resp.rt) | !is.na(sound_block_key_resp.rt), 1, NA),
+         # Set up a column for target trial reaction time calculation later
+         target_trial = ifelse(soundFile == starget | soundFile == ttarget, 0, NA))
+
+# image immediately following target
+auditoryIS$target_follow <- append(NA, auditoryIS$target_trial[1:(length(auditoryIS$target_trial)-1)])
+
+library(zoo)
+# Now, add in the reaction time adjustment for corresponding trial types
+auditoryIS <- 
+  auditoryIS %>%
+  mutate(target_follow = ifelse(target_follow == 0, 480, NA)) %>%  # Response on the image immediately following the target, reaction time + 1000
+  mutate(time_adjustment = coalesce(target_trial, target_follow)) %>%
+  # Define type of hit
+  mutate(hit_type = ifelse(time_adjustment == 480, "delayed_hit", ifelse(time_adjustment == 0, "hit", NA))) %>%
+  # Group targets within their own response window
+  group_by(PartID, time_adjustment) %>%
+  dplyr::mutate(target_group = ifelse(hit_type == "hit" & !is.na(time_adjustment), row_number(), NA)) %>%
+  # Calculate reaction time
+  mutate(tone_rt = as.numeric(as.character(tone_block_key_resp.rt)) + time_adjustment,
+         syllable_rt = as.numeric(as.character(sound_block_key_resp.rt)) + time_adjustment) %>%
+  mutate(rt = coalesce(syllable_rt, tone_rt))
+```
+
+
+# Auditory SL Reaction Time Extraction
+```{r}
+# Create target grouping for trials immediately following the targets. These steps are necessary for consecutive target trials in the random block. There are consecutive target trials when both target_trial and target_follow columns are not empty. Find the first trial of each set of consecutive target trials:
+auditoryIS <-
+  auditoryIS %>%
+  mutate(consecutive_target = ifelse(!is.na(target_trial) & !is.na(target_follow), 0, NA))
+
+auditoryIS$target_delay <- append(NA, auditoryIS$target_group[1:(length(auditoryIS$target_group)-1)])
+
+auditoryIS[which(auditoryIS$consecutive_target == 0), "target_delay"] <- NA
+
+auditoryIS$target_group <- coalesce(auditoryIS$target_group, auditoryIS$target_delay)
+
+# Only save the first keypress for the target considering the response time window 0 to +2000 (ignore warnings)
+auditoryIS <- 
+  auditoryIS %>%
+  group_by(PartID, target_group) %>%
+  dplyr::mutate(response_group = ifelse(!is.na(rt), row_number(), NA)) %>% # Order the responses for each target in the time window -1000 to +2000
+  group_by(PartID, target_group) %>%
+  mutate(first_response = min(response_group, na.rm = T)) %>% # Get the first response in the time window 0 to +960; ignore warning
+  mutate(rt = ifelse(response_group == first_response, rt, NA)) # Save only the first response in the time window 0 to +960
+
+# Check that every participant has 24 target trials in each run, Output should be 0
+auditoryIS %>%
+  filter(target_trial == 0) %>%
+  group_by(PartID, Run, task, condition, soundFile) %>%
+  dplyr::summarise(n = n()) %>%
+  filter(n != 24)
+```
+
+
+
+# Calculate Auditory SL mean reaction time, reaction time slope, hit rate
+```{r}
+library(tidyr)
+
+auditoryIS <- 
+  auditoryIS %>%
+  arrange(PartID, Run, row_number) %>%
+  # Find mini block using lags between row numbers; In between each mini block of stimuli, there should be rest, and thus jumping of row numbers
+  mutate(diff_row = row_number - lag(row_number)) %>%
+  mutate(mini_block_label = ifelse((is.na(diff_row) & row_number == 1) | diff_row > 1, "new_block", NA)) %>%
+  group_by(PartID, Run, mini_block_label) %>%
+  dplyr::mutate(mini_block = seq(1:n())) %>%
+  mutate(mini_block = ifelse(is.na(mini_block_label), NA, mini_block)) %>%
+  ungroup() %>%
+  tidyr::fill(mini_block, .direction = c("down")) %>%
+  # Add in trial number 1 ~ 96 for each mini block, each mini block has 96 trials
+  group_by(PartID, Run, mini_block) %>%
+  arrange(PartID, Run, mini_block, row_number) %>%
+  dplyr::mutate(mini_block_trial = seq(1:n())) 
+```
+
+
+```{r}
+mean_rt <-
+  auditoryIS %>%
+  ungroup() %>%
+  filter(hit_type == "hit" | hit_type == "delayed_hit") %>%
+  filter(!is.na(rt)) %>% # Only include actual responses to targets, get rid of other trials
+  mutate(group = ifelse(str_detect(PartID, "(_a)"), "adult", ifelse(str_detect(PartID, "(_c)"), "child", NA))) %>%
+  mutate(trialnum = as.numeric(as.character(trialnum)),
+         Run = as.numeric(as.character(Run))) %>%
+  arrange(PartID, Run, mini_block, mini_block_trial , row_number) %>% # Target group is target index
+  group_by(PartID, group, Run, mini_block, task, condition) %>% # Target group is target index
+  dplyr::mutate(target_order = seq(1:n())) 
+
+# Get the number of hits for each mini block and only save mini blocks with more than 2 hits
+max_hit <- 
+  mean_rt %>% 
+  ungroup(.) %>%
+  group_by(PartID, group, Run, mini_block, task, condition) %>%
+  dplyr::summarise(max_hit = max(target_order, na.rm = T)) %>%
+  filter(max_hit > 2) %>%
+  dplyr::select("PartID", "group", "Run", "mini_block", "task", "condition", "max_hit")
+
+mean_rt <- merge(mean_rt, max_hit, all.x = T)
+
+mean_rt %>%
+  ungroup() %>%
+  dplyr::select(PartID, group) %>%
+  distinct(.) %>%
+  group_by(group) %>%
+  dplyr::summarise(n = n())
+
+# Calculate RT Slope according to mini blocks
+mean_rt <- 
+  mean_rt %>%
+  filter(!is.na(max_hit)) %>%
+   ungroup(.) %>%
+  # Target order is target index
+  arrange(PartID, group, Run, mini_block, task, condition, row_number, target_order) %>% #
+  group_by(PartID, group, Run, mini_block, task, condition) %>%
+  mutate(scaled_rt = scale(rt)) %>%
+  dplyr::mutate(n = n(), mean_rt = mean(rt, na.rm = T)) %>%
+  # Calculate RT slope according to mini blocks
+  ungroup(.) %>%
+  group_by(PartID, group, Run, mini_block, task, condition) %>%
+  dplyr::mutate(scaled_rt_slope = summary(lm(scaled_rt ~ target_order))$coefficient[2, 1]) 
+```
+# To Do: recalculate this based on mini block? Is it necessary?
+# Calculate Auditory SL Hit Rate 
+```{r}
+# Categorize hits and False alarms and misses and correct rejection. Hit trials include both a hit on target or a delayed hit on the trial immediately following the target. For the sake of counting Hit vs. Correct Rejection: A delayed hit is counted as Hit ON the target trial and the trial immediately following the target will be counted as a correct rejection (because the delayed hit is actually intended for the target though the response is delayed)
+hit_count <- 
+  auditoryIS %>%
+  mutate(group = ifelse(str_detect(PartID, "(_a)"), "adult", ifelse(str_detect(PartID, "(_c)"), "child", NA))) %>%
+  # Define hits. Only trials with hit or delayed hit will have non-NA or non-Inf first_response (thus use this condition to find hits).
+  mutate(hit = ifelse(!is.na(first_response) & first_response != Inf & !is.na(time_adjustment) & (soundFile == starget | soundFile == ttarget), 1, NA)) %>%
+  mutate(miss = ifelse(first_response == Inf & !is.na(time_adjustment) & (soundFile == starget | soundFile == ttarget), 1, NA)) %>%
+  mutate(false_alarm = ifelse((!is.na(tone_block_key_resp.rt) | !is.na(sound_block_key_resp.rt)) & is.na(time_adjustment), 1, NA)) %>%
+    # Anything that is not a hit, miss, or false alarm, then it is a correct rejection, this is different from the SPOLI JADD manuscript and might be more accurate given the total number of distractions being 264
+  mutate(correct_rejection = ifelse(is.na(hit) & is.na(miss) & is.na(false_alarm), 1, NA)) 
+
+# Calculate hit rates
+sslPRIME <- 
+  hit_count %>%
+  mutate(group = ifelse(str_detect(PartID, "(_a)"), "adult", ifelse(str_detect(PartID, "(_c)"), "child", NA))) %>%
+  group_by(PartID, group, Run, condition, task) %>%
+  dplyr::summarise(across(c("hit", "miss", "false_alarm", "correct_rejection"), list(n = ~ sum(!is.na(.))))) %>% # Aggregate hits, misses, false alarms, correct rejections
+  mutate(target = hit_n + miss_n, # Manually calculate dprime
+         distractors = correct_rejection_n + false_alarm_n) %>%
+  mutate(d_prime = qnorm((hit_n) / (hit_n + miss_n)) - 
+  qnorm(false_alarm_n / (false_alarm_n + correct_rejection_n)))
+
+library(psycho)
+# Automatically calculate dprime and aprime 
+auto_dprime <- psycho::dprime(
+  n_hit = sslPRIME$hit_n,
+  n_fa = sslPRIME$false_alarm_n,
+  n_targets = sslPRIME$target,
+  n_distractors = sslPRIME$distractors,
+  adjusted = FALSE
+)
+
+sslPRIME$auto_dprime <- auto_dprime$dprime
+sslPRIME$aprime <- auto_dprime$aprime
+
+# Compare manually calculated dprime and automatically calculated dprime, it is okay if it is FALSE, we will use aprime anyways
+identical(sslPRIME$d_prime, sslPRIME$auto_dprime)
+```
+
+
+## Save By-trial RT, Mean RT, RT Slope, Hit Rate, A-prime, D-prime Data
+```{r}
+# Save by-trial RT, Mean RT, RT Slope data
+in_scanner_rt <- 
+  mean_rt %>%
+  ungroup() %>%
+  dplyr::select(PartID, group, Run, expName, task, condition, row_number, target_order, rt, scaled_rt, mean_rt, scaled_rt_slope) %>%
+  arrange(PartID, group, Run, expName, task, condition, row_number)
+
+# write.csv(in_scanner_rt, "/Users/jojohu/Downloads/in_scanner_rt.csv", row.names = F)
+
+# Save Hit Rate, A-prime, D-prime Data Data
+in_scanner_hit <- 
+  sslPRIME %>%
+  ungroup() %>%
+  # Get rid of auto_dprime, which is the same as d_prime column
+  dplyr::select(-one_of("auto_dprime")) %>%
+  arrange(PartID, group, Run, task, condition)
+
+# write.csv(in_scanner_rt, "/Users/jojohu/Downloads/in_scanner_aprime.csv", row.names = F)
+```
+
+
+
+# Descriptive Statistics, Statistical Analysis, and Plotting
+## Preprocess: set up within subject standard error function
+## Within subject standard error function
+```{r, include = F}
+summarySEwithin <- function(data=NULL, measurevar, betweenvars=NULL, withinvars=NULL,
+                            idvar=NULL, na.rm=FALSE, conf.interval=.95, .drop=TRUE) {
+
+  # Ensure that the betweenvars and withinvars are factors
+  factorvars <- vapply(data[, c(betweenvars, withinvars), drop=FALSE],
+    FUN=is.factor, FUN.VALUE=logical(1))
+
+  if (!all(factorvars)) {
+    nonfactorvars <- names(factorvars)[!factorvars]
+    message("Automatically converting the following non-factors to factors: ",
+            paste(nonfactorvars, collapse = ", "))
+    data[nonfactorvars] <- lapply(data[nonfactorvars], factor)
+  }
+
+  # Get the means from the un-normed data
+  datac <- summarySE(data, measurevar, groupvars=c(betweenvars, withinvars),
+                     na.rm=na.rm, conf.interval=conf.interval, .drop=.drop)
+
+  # Drop all the unused columns (these will be calculated with normed data)
+  datac$sd <- NULL
+  datac$se <- NULL
+  datac$ci <- NULL
+
+  # Norm each subject's data
+  ndata <- normDataWithin(data, idvar, measurevar, betweenvars, na.rm, .drop=.drop)
+
+  # This is the name of the new column
+  measurevar_n <- paste(measurevar, "_norm", sep="")
+
+  # Collapse the normed data - now we can treat between and within vars the same
+  ndatac <- summarySE(ndata, measurevar_n, groupvars=c(betweenvars, withinvars),
+                      na.rm=na.rm, conf.interval=conf.interval, .drop=.drop)
+
+  # Apply correction from Morey (2008) to the standard error and confidence interval
+  #  Get the product of the number of conditions of within-S variables
+  nWithinGroups    <- prod(vapply(ndatac[,withinvars, drop=FALSE], FUN=nlevels,
+                           FUN.VALUE=numeric(1)))
+  correctionFactor <- sqrt( nWithinGroups / (nWithinGroups-1) )
+
+  # Apply the correction factor
+  ndatac$sd <- ndatac$sd * correctionFactor
+  ndatac$se <- ndatac$se * correctionFactor
+  ndatac$ci <- ndatac$ci * correctionFactor
+
+  # Combine the un-normed means with the normed results
+  merge(datac, ndatac)
+}
+
+summarySE <- function(data=NULL, measurevar, groupvars=NULL, na.rm=FALSE,
+                      conf.interval=.95, .drop=TRUE) {
+    library(plyr)
+
+    # New version of length which can handle NA's: if na.rm==T, don't count them
+    length2 <- function (x, na.rm=FALSE) {
+        if (na.rm) sum(!is.na(x))
+        else       length(x)
+    }
+
+    # This does the summary. For each group's data frame, return a vector with
+    # N, mean, and sd
+    datac <- ddply(data, groupvars, .drop=.drop,
+      .fun = function(xx, col) {
+        c(N    = length2(xx[[col]], na.rm=na.rm),
+          mean = mean   (xx[[col]], na.rm=na.rm),
+          sd   = sd     (xx[[col]], na.rm=na.rm)
+        )
+      },
+      measurevar
+    )
+
+    # Rename the "mean" column    
+    datac <- rename(datac, c("mean" = measurevar))
+
+    datac$se <- datac$sd / sqrt(datac$N)  # Calculate standard error of the mean
+
+    # Confidence interval multiplier for standard error
+    # Calculate t-statistic for confidence interval: 
+    # e.g., if conf.interval is .95, use .975 (above/below), and use df=N-1
+    ciMult <- qt(conf.interval/2 + .5, datac$N-1)
+    datac$ci <- datac$se * ciMult
+
+    return(datac)
+}
+
+normDataWithin <- function(data=NULL, idvar, measurevar, betweenvars=NULL,
+                           na.rm=FALSE, .drop=TRUE) {
+    library(plyr)
+
+    # Measure var on left, idvar + between vars on right of formula.
+    data.subjMean <- ddply(data, c(idvar, betweenvars), .drop=.drop,
+     .fun = function(xx, col, na.rm) {
+        c(subjMean = mean(xx[,col], na.rm=na.rm))
+      },
+      measurevar,
+      na.rm
+    )
+
+    # Put the subject means with original data
+    data <- merge(data, data.subjMean)
+
+    # Get the normalized data in a new column
+    measureNormedVar <- paste(measurevar, "_norm", sep="")
+    data[,measureNormedVar] <- data[,measurevar] - data[,"subjMean"] +
+                               mean(data[,measurevar], na.rm=na.rm)
+
+    # Remove this subject mean column
+    data$subjMean <- NULL
+
+    return(data)
+}
+```
+
+
+# Descriptive Statistics for Demographics and RT Measures
+```{r}
+demo <- read.csv("/Users/jojohu/Downloads/demo_full_in_scanner.csv", stringsAsFactors = F)
+
+demo <- 
+  demo %>% 
+  filter(group == "adult" | group == "TD")
+
+mean_rt %>%
+  ungroup() %>%
+  filter(PartID %in% demo$PartID) %>%
+  dplyr::select(PartID, group) %>%
+  distinct(.) %>%
+  group_by(group) %>%
+  dplyr::summarise(n = n())
+
+runOrderAd <- read.csv("/Users/jojohu/Documents/Qlab/fmri/data/adult/blast_dev_adult_event_run_order.csv")
+runOrderC <- read.csv("/Users/jojohu/Documents/Qlab/fmri/data/child/blast_dev_child_event_run_order.csv")
+
+runOrder <- rbind(runOrderAd,runOrderC)
+
+speechStrFirst <-
+  runOrder %>%
+  filter(str_starts(run_order, "1") | run_order == bids_run)
+```
+
+
+## Plot SSL Reaction Time (All Runs)
+```{r}
+library(ggplot2)
+
+pd <- position_dodge(width = 0.2)
+
+mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  # filter(PartID %in% unique(speechStrFirst$PartID)) %>%
+  # filter(Run == 1 | Run == 3) %>%
+  dplyr::select(PartID, group, task, condition, Run, mean_rt) %>%
+  summarySEwithin(., measurevar= c("mean_rt"), betweenvars = c("group"), withinvars= c("task", "condition"), idvar= c("PartID"), na.rm=T, conf.interval=.95) %>%
+  ggplot(aes(x = group, y = mean_rt, fill = condition)) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+ geom_errorbar(aes(ymin = mean_rt - se, ymax = mean_rt + se),
+                  width = .1,
+                  position = position_dodge(width = 0.9)) +
+  facet_grid(~task) +
+  labs(x = "group",  # Change x-axis label
+       y = "SL Reaction Time (ms)") +
+  guides(fill=guide_legend(title= "Condition"))
+```
+
+```{r}
+meanRT_cond <- 
+  mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  # filter(PartID %in% unique(speechStrFirst$PartID)) %>%
+  # filter(Run == 1 | Run == 3) %>%
+  group_by(PartID, group, task, condition) %>%
+  dcast(PartID+group+task ~ condition, fun.aggregate = mean, value.var = "mean_rt")
+  # filter(!is.na(S) & !is.na(R))
+
+adR <- meanRT_cond[which(meanRT_cond$group == "adult" & meanRT_cond$task == "syllable"),]
+chR <- meanRT_cond[which(meanRT_cond$group == "child" & meanRT_cond$task == "syllable"),]
+
+# t.test(adR$R,  adR$S, paired = T)
+# t.test(chR$R,  chR$S, paired = T)
+```
+
+
+## Plot SSL Reaction Time (Runs 1 & 3)
+```{r}
+library(ggplot2)
+
+pd <- position_dodge(width = 0.2)
+
+mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  # filter(PartID %in% unique(speechStrFirst$PartID)) %>%
+  # filter(Run == 1 | Run == 3) %>%
+  dplyr::select(PartID, group, task, condition, Run, mean_rt) %>%
+  summarySEwithin(., measurevar= c("mean_rt"), betweenvars = c("group"), withinvars= c("task", "condition"), idvar= c("PartID"), na.rm=T, conf.interval=.95) %>%
+  ggplot(aes(x = group, y = mean_rt, fill = condition)) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+ geom_errorbar(aes(ymin = mean_rt - se, ymax = mean_rt + se),
+                  width = .1,
+                  position = position_dodge(width = 0.9)) +
+  facet_grid(~task) +
+  labs(x = "group",  # Change x-axis label
+       y = "SL Reaction Time (ms)") +
+  guides(fill=guide_legend(title= "Condition")) 
+```
+
+```{r}
+meanRT_cond <- 
+  mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  # filter(PartID %in% unique(speechStrFirst$PartID)) %>%
+  filter(Run == 1 | Run == 3) %>%
+  group_by(PartID, group, task, condition) %>%
+  dcast(PartID+group+task ~ condition, fun.aggregate = mean, value.var = "mean_rt")
+  # filter(!is.na(S) & !is.na(R))
+
+adR <- meanRT_cond[which(meanRT_cond$group == "adult" & meanRT_cond$task == "syllable"),]
+chR <- meanRT_cond[which(meanRT_cond$group == "child" & meanRT_cond$task == "syllable"),]
+
+# t.test(adR$R,  adR$S, paired = T)
+# t.test(chR$R,  chR$S, paired = T)
+```
+
+
+## Plot SSL Reaction Time (Runs 2 & 4)
+```{r}
+library(ggplot2)
+
+pd <- position_dodge(width = 0.2)
+
+mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  # filter(PartID %in% unique(speechStrFirst$PartID)) %>%
+  filter(Run == 2 | Run == 4) %>%
+  dplyr::select(PartID, group, task, condition, Run, mean_rt) %>%
+  summarySEwithin(., measurevar= c("mean_rt"), betweenvars = c("group"), withinvars= c("task", "condition"), idvar= c("PartID"), na.rm=T, conf.interval=.95) %>%
+  ggplot(aes(x = group, y = mean_rt, fill = condition)) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+ geom_errorbar(aes(ymin = mean_rt - se, ymax = mean_rt + se),
+                  width = .1,
+                  position = position_dodge(width = 0.9)) +
+  facet_grid(~task) +
+  labs(x = "group",  # Change x-axis label
+       y = "SL Reaction Time (ms)") +
+  guides(fill=guide_legend(title= "Condition")) 
+```
+
+```{r}
+meanRT_cond <- 
+  mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  # filter(PartID %in% unique(speechStrFirst$PartID)) %>%
+  filter(Run == 2 | Run == 4) %>%
+  group_by(PartID, group, task, condition) %>%
+  dcast(PartID+group+task ~ condition, fun.aggregate = mean, value.var = "mean_rt")
+  # filter(!is.na(S) & !is.na(R))
+
+adR <- meanRT_cond[which(meanRT_cond$group == "adult" & meanRT_cond$task == "syllable"),]
+chR <- meanRT_cond[which(meanRT_cond$group == "child" & meanRT_cond$task == "syllable"),]
+
+# t.test(adR$R,  adR$S, paired = T)
+# t.test(chR$R,  chR$S, paired = T)
+```
+
+
+
+# Plot RT Slope (All Runs)
+# All subjects
+```{r}
+mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  # filter(PartID %in% unique(speechStrFirst$PartID)) %>%
+  # filter(Run == 1 | Run == 3) %>%
+  summarySEwithin(., measurevar= c("scaled_rt_slope"), betweenvars = c("group"), withinvars= c("task", "condition"), idvar= c("PartID"), na.rm=T, conf.interval=.95) %>%
+  ggplot(aes(x = as.factor(group), y = scaled_rt_slope, fill = as.factor(condition))) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+  geom_errorbar(aes(ymin = scaled_rt_slope - se, ymax = scaled_rt_slope + se),
+                  width = .1,
+                  position = position_dodge(width = 0.9)) +
+  labs(x = "group",  # Change x-axis label
+       y = "SL Reaction Time Slope (arbitrary unit / trial)") +
+  guides(fill=guide_legend(title= "Condition")) + 
+  facet_wrap(~task)
+```
+
+```{r}
+meanSlope_cond <-
+  mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  group_by(PartID, group, condition, task) %>%
+  dplyr::summarise(mean_slope = mean(scaled_rt_slope, na.rm = T)) 
+
+library(reshape)
+
+meanSlope_cond <- 
+  meanSlope_cond %>%
+  group_by(PartID, group, task, condition) %>%
+  dcast(PartID+group+task ~ condition, fun.aggregate = mean, value.var = "mean_slope")
+  # filter(!is.na(S) & !is.na(R))
+
+adS <- meanSlope_cond[which(meanSlope_cond$group == "adult" & meanSlope_cond$task == "syllable"),]
+chS <- meanSlope_cond[which(meanSlope_cond$group == "child" & meanSlope_cond$task == "syllable"),]
+
+t.test(adS$R,  adS$S, paired = T)
+t.test(chS$R,  chS$S, paired = T)
+
+# t.test(mean_slope~condition, data = meanSlope_cond[which(meanSlope_cond$group == "adult" & meanSlope_cond$task == "tone"),])
+# t.test(mean_slope~condition, data = meanSlope_cond[which(meanSlope_cond$group == "child" & meanSlope_cond$task == "tone"),])
+```
+
+
+# Plot RT Slope (All Runs)
+# Subjects with structured syllable first
+```{r}
+mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  filter(PartID %in% unique(speechStrFirst$PartID)) %>%
+  # filter(Run == 1 | Run == 3) %>%
+  summarySEwithin(., measurevar= c("scaled_rt_slope"), betweenvars = c("group"), withinvars= c("task", "condition"), idvar= c("PartID"), na.rm=T, conf.interval=.95) %>%
+  ggplot(aes(x = as.factor(group), y = scaled_rt_slope, fill = as.factor(condition))) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+  geom_errorbar(aes(ymin = scaled_rt_slope - se, ymax = scaled_rt_slope + se),
+                  width = .1,
+                  position = position_dodge(width = 0.9)) +
+  labs(x = "group",  # Change x-axis label
+       y = "SL Reaction Time Slope (arbitrary unit / trial)") +
+  guides(fill=guide_legend(title= "Condition")) + 
+  facet_wrap(~task)
+```
+
+# Plot RT Slope (Run 1 & 3)
+# All subjects
+```{r}
+mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  filter(Run == 1 | Run == 3) %>%
+  summarySEwithin(., measurevar= c("scaled_rt_slope"), betweenvars = c("group"), withinvars= c("task", "condition"), idvar= c("PartID"), na.rm=T, conf.interval=.95) %>%
+  ggplot(aes(x = as.factor(group), y = scaled_rt_slope, fill = as.factor(condition))) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+  geom_errorbar(aes(ymin = scaled_rt_slope - se, ymax = scaled_rt_slope + se),
+                  width = .1,
+                  position = position_dodge(width = 0.9)) +
+  labs(x = "group",  # Change x-axis label
+       y = "SL Reaction Time Slope (arbitrary unit / trial)") +
+  guides(fill=guide_legend(title= "Condition")) + 
+  facet_wrap(~task)
+```
+
+```{r}
+meanSlope_cond <-
+  mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  filter(Run == 1 | Run == 3) %>%
+  group_by(PartID, group, condition, task) %>%
+  dplyr::summarise(mean_slope = mean(scaled_rt_slope, na.rm = T)) 
+
+library(reshape)
+
+meanSlope_cond <- 
+  meanSlope_cond %>%
+  group_by(PartID, group, task, condition) %>%
+  dcast(PartID+group+task ~ condition, fun.aggregate = mean, value.var = "mean_slope")
+  # filter(!is.na(S) & !is.na(R))
+
+adS <- meanSlope_cond[which(meanSlope_cond$group == "adult" & meanSlope_cond$task == "syllable"),]
+chS <- meanSlope_cond[which(meanSlope_cond$group == "child" & meanSlope_cond$task == "syllable"),]
+
+t.test(adS$R,  adS$S, paired = T)
+t.test(chS$R,  chS$S, paired = T)
+
+# t.test(mean_slope~condition, data = meanSlope_cond[which(meanSlope_cond$group == "adult" & meanSlope_cond$task == "tone"),])
+# t.test(mean_slope~condition, data = meanSlope_cond[which(meanSlope_cond$group == "child" & meanSlope_cond$task == "tone"),])
+```
+
+# Plot RT Slope (Run 1 & 3)
+# Subjects with structured syllable first
+```{r}
+mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  filter(PartID %in% unique(speechStrFirst$PartID)) %>%
+  filter(Run == 1 | Run == 3) %>%
+  summarySEwithin(., measurevar= c("scaled_rt_slope"), betweenvars = c("group"), withinvars= c("task", "condition"), idvar= c("PartID"), na.rm=T, conf.interval=.95) %>%
+  ggplot(aes(x = as.factor(group), y = scaled_rt_slope, fill = as.factor(condition))) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+  geom_errorbar(aes(ymin = scaled_rt_slope - se, ymax = scaled_rt_slope + se),
+                  width = .1,
+                  position = position_dodge(width = 0.9)) +
+  labs(x = "group",  # Change x-axis label
+       y = "SL Reaction Time Slope (arbitrary unit / trial)") +
+  guides(fill=guide_legend(title= "Condition")) + 
+  facet_wrap(~task)
+```
+
+
+
+# Plot RT Slope (Run 2 & 4)
+# All subjects
+```{r}
+mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  filter(Run == 2 | Run == 4) %>%
+  summarySEwithin(., measurevar= c("scaled_rt_slope"), betweenvars = c("group"), withinvars= c("task", "condition"), idvar= c("PartID"), na.rm=T, conf.interval=.95) %>%
+  ggplot(aes(x = as.factor(group), y = scaled_rt_slope, fill = as.factor(condition))) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+  geom_errorbar(aes(ymin = scaled_rt_slope - se, ymax = scaled_rt_slope + se),
+                  width = .1,
+                  position = position_dodge(width = 0.9)) +
+  labs(x = "group",  # Change x-axis label
+       y = "SL Reaction Time Slope (arbitrary unit / trial)") +
+  guides(fill=guide_legend(title= "Condition")) + 
+  facet_wrap(~task)
+```
+
+# Plot RT Slope (Run 2 & 4)
+# Subjects with structured syllable first
+```{r}
+meanSlope_cond <-
+  mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  filter(Run == 2 | Run == 4) %>%
+  group_by(PartID, group, condition, task) %>%
+  dplyr::summarise(mean_slope = mean(scaled_rt_slope, na.rm = T)) 
+
+library(reshape)
+
+meanSlope_cond <- 
+  meanSlope_cond %>%
+  group_by(PartID, group, task, condition) %>%
+  dcast(PartID+group+task ~ condition, fun.aggregate = mean, value.var = "mean_slope")
+  # filter(!is.na(S) & !is.na(R))
+
+adS <- meanSlope_cond[which(meanSlope_cond$group == "adult" & meanSlope_cond$task == "syllable"),]
+chS <- meanSlope_cond[which(meanSlope_cond$group == "child" & meanSlope_cond$task == "syllable"),]
+
+t.test(adS$R,  adS$S, paired = T)
+t.test(chS$R,  chS$S, paired = T)
+
+# t.test(mean_slope~condition, data = meanSlope_cond[which(meanSlope_cond$group == "adult" & meanSlope_cond$task == "tone"),])
+# t.test(mean_slope~condition, data = meanSlope_cond[which(meanSlope_cond$group == "child" & meanSlope_cond$task == "tone"),])
+```
+
+
+```{r}
+mean_rt %>%
+  filter(PartID %in% demo$PartID) %>%
+  filter(PartID %in% unique(speechStrFirst$PartID)) %>%
+  filter(Run == 2 | Run == 4) %>%
+  summarySEwithin(., measurevar= c("scaled_rt_slope"), betweenvars = c("group"), withinvars= c("task", "condition"), idvar= c("PartID"), na.rm=T, conf.interval=.95) %>%
+  ggplot(aes(x = as.factor(group), y = scaled_rt_slope, fill = as.factor(condition))) +
+  geom_bar(stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+  geom_errorbar(aes(ymin = scaled_rt_slope - se, ymax = scaled_rt_slope + se),
+                  width = .1,
+                  position = position_dodge(width = 0.9)) +
+  labs(x = "group",  # Change x-axis label
+       y = "SL Reaction Time Slope (arbitrary unit / trial)") +
+  guides(fill=guide_legend(title= "Condition")) + 
+  facet_wrap(~task)
+```
+
+
+
+
+
+# Plot Aprime
+```{r}
+sslPRIME %>%  
+  filter(PartID %in% demo$PartID) %>%
+  mutate(hit_rate = hit_n/target) %>%
+  ggplot(aes(x = as.factor(group), y = hit_rate)) +
+  geom_bar(aes(fill = as.factor(condition)),
+           stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+  labs(x = "group",  # Change x-axis label
+       y = "Hit Rate") +
+  guides(fill=guide_legend(title= "Condition")) +
+   facet_grid(~task + Run)
+```
+
+
+```{r}
+sslPRIME %>%
+  filter(PartID %in% demo$PartID) %>%
+  # filter(Run == 1 | Run == 3) %>%
+  # summarySEwithin(., measurevar= c("rt"), betweenvars = c("group"), withinvars= c("task", "condition", "Run"), idvar= c("PartID"), na.rm=T, conf.interval=.95) %>%
+  ggplot(aes(x = as.factor(group), y = aprime)) +
+  geom_bar(aes(fill = as.factor(Run)),
+           stat = "summary",
+           position = position_dodge(),
+           width = 0.9,
+           color = "black",
+           alpha = 0.5) +
+  labs(x = "group",  # Change x-axis label
+       y = "aprime") +
+  guides(fill=guide_legend(title= "Condition")) + 
+  facet_grid(~condition+task)
+```

@@ -389,7 +389,7 @@ mismatchRun <-
 
 write.csv(missingEvent, "/Users/jojohu/Documents/Qlab/fmri/data/adult/missing_event_file.csv")
 write.csv(missingPreprocessed, "/Users/jojohu/Documents/Qlab/fmri/data/adult/missing_preprocessed.csv")
-write.csv(runOnly, "/Users/jojohu/Downloads/blast_dev_adult_event_run_order.csv", row.names = F)
+write.csv(runOnly, "/Users/jojohu/Documents/Qlab/fmri/data/adult/blast_dev_adult_event_run_order.csv", row.names = F)
 ```
 
 

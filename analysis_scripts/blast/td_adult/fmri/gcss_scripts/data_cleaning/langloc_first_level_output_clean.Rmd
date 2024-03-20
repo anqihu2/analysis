@@ -5,7 +5,6 @@ date: "9/23/2022"
 output: html_document
 ---
 
-# TO DO: Delete what is already in these folders
 
 # Clean and move adult files (Subject-Level LangLoc Intact - Degraded)
 ```{r}
@@ -16,6 +15,7 @@ aliceFileUE <-
   list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/unedit_fmriprep/langloc/subjectLevel", 
            pattern = "sub-blasta*", 
            full.names = T, recursive = F)
+
 aliceFileUE <-
   list.files(aliceFileUE,
            pattern =  "sub-blasta\\d+_task-langloc_contrast-intactminusdegraded_stat-z_statmap.nii.gz", 
@@ -28,6 +28,9 @@ aliceFile <-
   list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/edit_fmriprep/langloc/subjectLevel", 
            pattern = "sub-blasta*", 
            full.names = T, recursive = F)
+
+subjectDir <- aliceFile
+
 aliceFile <-
   list.files(aliceFile,
            pattern =  "sub-blasta\\d+_task-langloc_contrast-intactminusdegraded_stat-z_statmap.nii.gz", 
@@ -35,8 +38,11 @@ aliceFile <-
 
 aliceFile <- as.data.frame(aliceFile)
 aliceFile$aliceFile <- as.character(aliceFile$aliceFile)
+```
+
 
 # Save edited fMRI outputs and remove unedited fMRI outputs that are already in edited fMRI outputs
+```{r}
 aliceFileUE <- 
   aliceFileUE %>%
   filter(!basename(aliceFileUE) %in% basename(aliceFile$aliceFile)) 
@@ -76,7 +82,7 @@ aliceFile$format_id <- paste("blast", str_extract(aliceFile$part_id, "(?<=blast)
 
 aliceFileAd <- aliceFile
 
-file.copy(as.character(aliceFile$aliceFile), aliceFile$new_path, overwrite = T)
+file.copy(as.character(aliceFile$aliceFile), aliceFile$new_path, overwrite = F)
 
 file.rename(aliceFile$new_path, aliceFile$new_name)
 
@@ -88,7 +94,7 @@ writeBin(paste(my_output, collapse = "\n"),  "/Volumes/data/projects/blast/data/
 ```
 
 
-# Clean and move children files
+# Clean and move TD children files
 ```{r}
 library(stringr)
 
@@ -164,7 +170,7 @@ aliceFile$new_name <- paste0("/Volumes/data/projects/blast/data/mri/imaging/scot
 
 aliceFileTD <- aliceFile
 
-file.copy(as.character(aliceFile$aliceFile), aliceFile$new_path, overwrite = T)
+file.copy(as.character(aliceFile$aliceFile), aliceFile$new_path, overwrite = F)
 
 file.rename(aliceFile$new_path, aliceFile$new_name)
 
@@ -177,6 +183,10 @@ writeBin(paste(my_output, collapse = "\n"),  "/Volumes/data/projects/blast/data/
 
 # Save combined dataset
 ```{r}
+set.seed(10)
+
+aliceFileAd <- aliceFileAd[sample(nrow(aliceFileAd), 27), ]
+
 aliceCombined <-
   dplyr::bind_rows(aliceFileAd, aliceFileTD) %>%
   distinct(.) %>%
@@ -211,6 +221,93 @@ writeBin(paste(my_output, collapse = "\n"),  "/Volumes/data/projects/blast/data/
 
 
 
+
+# Clean and move ASD children files
+```{r}
+library(stringr)
+
+aliceFileUE <-
+  list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/unedit_fmriprep/langloc/subjectLevel", 
+           pattern = "sub-blastc*", 
+           full.names = T, recursive = F)
+aliceFileUE <-
+  list.files(aliceFileUE,
+           pattern =  "sub-blastc\\d+_task-langloc_contrast-intactminusdegraded_stat-z_statmap.nii.gz", 
+           full.names = T, recursive = F)
+
+aliceFileUE <- as.data.frame(aliceFileUE)
+aliceFileUE$aliceFileUE <- as.character(aliceFileUE$aliceFileUE)
+
+aliceFile <-
+  list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/edit_fmriprep/langloc/subjectLevel", 
+           pattern = "sub-blastc*", 
+           full.names = T, recursive = F)
+aliceFile <-
+  list.files(aliceFile,
+           pattern =  "sub-blastc\\d+_task-langloc_contrast-intactminusdegraded_stat-z_statmap.nii.gz", 
+           full.names = T, recursive = F)
+
+aliceFile <- as.data.frame(aliceFile)
+aliceFile$aliceFile <- as.character(aliceFile$aliceFile)
+
+# Save edited fMRI outputs and remove unedited fMRI outputs that are already in edited fMRI outputs
+aliceFileUE <- 
+  aliceFileUE %>%
+  filter(!basename(aliceFileUE) %in% basename(aliceFile$aliceFile)) 
+
+aliceFileUE <- 
+  aliceFileUE %>%
+  mutate(source = str_extract(aliceFileUE, "unedit_fmriprep"))
+
+aliceFile <- 
+  aliceFile %>%
+  mutate(source = str_extract(aliceFile, "edit_fmriprep"))
+
+aliceFile <- 
+  dplyr::bind_rows(aliceFileUE, aliceFile) %>%
+  mutate(aliceFile = coalesce(aliceFile, aliceFileUE)) %>%
+  dplyr::select(-one_of("aliceFileUE")) %>%
+  mutate(basename = basename(aliceFile)) %>%
+  mutate(part_id = str_extract(basename, "sub-blastc[[:digit:]]+"),
+         bare_id = str_extract(basename, "(?<=sub-blastc)[[:digit:]]+")) %>%
+  dplyr::select(part_id, bare_id, basename, source, aliceFile) %>%
+  distinct(.) %>%
+  arrange(part_id) 
+
+# Read in TD subject list
+asdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - ASD.csv")
+
+aliceFile$format_id <- paste("blast", str_extract(aliceFile$part_id, "(?<=blast)\\S{1}"), str_extract(aliceFile$part_id, "(?<=blastc)\\S+"), sep = "_")
+
+aliceFile <- 
+  aliceFile %>%
+  filter(format_id %in% unique(asdID$ID)) %>%
+  distinct(.)
+
+aliceFile <- 
+  aliceFile %>%
+  arrange(part_id) %>%
+  dplyr::mutate(rename_id = paste0(seq(1:nrow(.)), "_stat-z_statmap.nii.gz"),
+         rename_number = seq(1:nrow(.)))
+
+aliceFile$new_path <- paste0("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/child/asd/",
+                             aliceFile$basename)
+
+aliceFile$new_name <- paste0("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/child/asd/",
+                             aliceFile$rename_id)
+
+aliceFileASD <- aliceFile
+
+file.copy(as.character(aliceFile$aliceFile), aliceFile$new_path, overwrite = F)
+
+file.rename(aliceFile$new_path, aliceFile$new_name)
+
+write.csv(aliceFile, 
+          "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_asd.csv", row.names = F)
+
+my_output <- capture.output(write.table(aliceFile[, "bare_id"], sep = " ", col.names = F, row.names = F, quote = F, eol = "\n"))
+writeBin(paste(my_output, collapse = "\n"),  "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/langloc_asd.txt")
+```
 
 
 

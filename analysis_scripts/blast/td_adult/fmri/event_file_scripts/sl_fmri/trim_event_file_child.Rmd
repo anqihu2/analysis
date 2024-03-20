@@ -285,8 +285,6 @@ bidsEvent <- bidsEvent[-which(bidsEvent$PartID == "blast_c_209" & bidsEvent$task
 # blast_c_213 log file is empty, remove bids run 1
 bidsEvent <- bidsEvent[-which(bidsEvent$PartID == "blast_c_213" & bidsEvent$task == "auditory" & bidsEvent$Run == 1),] 
 
-
-
 bidsEvent <-
   bidsEvent %>%
   arrange(PartID, task, Run) %>%
@@ -357,7 +355,17 @@ dateRun <- dateRun[-which(dateRun$PartID == "blast_c_469" & dateRun$task == "aud
 dateRun <- dateRun[-which(dateRun$PartID == "blast_c_520" & dateRun$task == "auditory" & dateRun$Run == 4),]
 dateRun <- dateRun[-which(dateRun$PartID == "blast_c_520" & dateRun$task == "auditory" & dateRun$Run == 1),]
 dateRun <- dateRun[-which(dateRun$PartID == "blast_c_520" & dateRun$task == "auditory" & dateRun$Run == 2),]
+```
 
+
+# TO DO: blast_c_513 Run 4 bids missing, has dicoms data, would need to reprocess bids and fmriPrep, removing event file run 4
+```{r}
+# The event file run order is 3, 4, 1, 2 corresponding to 1, 2, 3, 4 bids, bids run 4 missing, so removing run 2 from events
+dateRun <- dateRun[-which(dateRun$PartID == "blast_c_513" & dateRun$task == "auditory" & dateRun$Run == 2),]
+```
+
+
+```{r}
 # This one has log file, but no csv file: blast_c_230 is missing behavioral run 2 csv, manually add it
 dateRun <- 
   rbind(dateRun, c("blast_c_230", "2019_Jul_24_1550", as.integer("2"), "blast_c_230_auditory_2.csv", "auditory", "2019_Jul_24", "2019-07-24", "1550"))
@@ -401,7 +409,7 @@ mismatchRun <-
 
 write.csv(missingEvent, "/Users/jojohu/Documents/Qlab/fmri/data/child/missing_event_file.csv")
 write.csv(missingPreprocessed, "/Users/jojohu/Documents/Qlab/fmri/data/child/missing_preprocessed.csv")
-write.csv(runOnly, "/Users/jojohu/Downloads/blast_dev_child_event_run_order.csv", row.names = F)
+write.csv(runOnly, "/Users/jojohu/Documents/Qlab/fmri/data/child/blast_dev_child_event_run_order.csv", row.names = F)
 ```
 
 
@@ -456,7 +464,10 @@ changeRun$eventFile <- as.character(changeRun$eventFile)
 changeRun$archive <- paste0("/Volumes/data/projects/blast/data/derivatives/event_files/children_new/original_event_files/", changeRun$basename)
 
 print(changeRun)
+```
 
+
+```{r}
 file.rename(as.character(changeRun$eventFile), changeRun$archive)
 ```
 

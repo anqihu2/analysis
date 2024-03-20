@@ -6,20 +6,27 @@ output: html_document
 ---
 
 
-# Move and Rename **ASL Structured Minus Random** contrasts to individual folders and rename them for Subject-specific ASL/ LangLoc analyses
+# Move and Rename **ASL Structured Minus Random** **subject-level** contrasts to individual folders and rename them for Subject-specific ASL/ LangLoc analyses
 ```{r}
 library(stringr)
 library(dplyr)
 
-output_path <- "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/asl_str_minus_rand/"
+output_path <- "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/asl_str_minus_rand/"
 
-subjectID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_combined.csv", stringsAsFactors = F)
+adultID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_adult.csv", stringsAsFactors = F)
+tdID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_child.csv")
+asdID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_asd.csv")
+
+subjectID <- dplyr::bind_rows(adultID, tdID, asdID)
+
 tdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - TD.csv")
+asdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - ASD.csv")
 
 aslFileUE <-
   list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/unedit_fmriprep/asl/subjectLevel", 
            pattern = "sub-blast*", 
            full.names = T, recursive = F)
+
 aslFileUE <-
   list.files(aslFileUE,
            pattern =  "sub-blast[[:alnum:]]+_task-asl_run-all_contrast-[[:alnum:]]+sminus[[:alnum:]]+r_stat-z_statmap.nii.gz",
@@ -32,6 +39,9 @@ aslFile <-
   list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/edit_fmriprep/asl/subjectLevel", 
            pattern = "sub-blast*", 
            full.names = T, recursive = F)
+
+# subjectDir <- aslFile
+
 aslFile <-
   list.files(aslFile,
            pattern =  "sub-blast[[:alnum:]]+_task-asl_run-all_contrast-[[:alnum:]]+sminus[[:alnum:]]+r_stat-z_statmap.nii.gz",
@@ -40,7 +50,11 @@ aslFile <-
 aslFile <- as.data.frame(aslFile)
 aslFile$aslFile <- as.character(aslFile$aslFile)
 
+# setdiff(str_extract(subjectDir, "sub-blast\\S+"), unique(str_extract(aslFile$aslFile, "sub-blast(a|c)[:digit:]+")))
+```
+
 # Save edited fMRI outputs and remove unedited fMRI outputs that are already in edited fMRI outputs
+```{r}
 aslFileUE <- 
   aslFileUE %>%
   filter(!basename(aslFileUE) %in% basename(aslFile$aslFile)) 
@@ -61,8 +75,9 @@ aslFile <-
   dplyr::select(-one_of("aslFileUE")) %>%
   mutate(basename = basename(aslFile)) %>%
   mutate(part_id = str_extract(basename, "sub-blast(a|c)[[:digit:]]+"),
-         bare_id = str_extract(basename, "(?<=sub-blast(a|c))[[:digit:]]+"),
-         group = ifelse(str_detect(basename, "blasta"), "adult", ifelse(str_detect(basename, "blastc"), "child", NA)),
+         bare_id = str_extract(basename, "(?<=sub-blast(a|c))[[:digit:]]+")) %>%
+  mutate(format_id = paste("blast", str_extract(part_id, "(?<=blast)\\S{1}"), str_extract(part_id, "(?<=blast(a|c))\\S+"), sep = "_")) %>%
+  mutate(group = ifelse(str_detect(basename, "blasta"), "adult", ifelse(format_id %in% unique(tdID$ID), "child", ifelse(format_id %in% unique(asdID$ID), "asd", NA))),
          stimuli = str_extract(basename, "(syllable|tone)"),
          condition = str_extract(basename, "(syllablesminussyllabler|tonesminustoner)")) %>%
   # Rename the stimuli and condition following previous pipleines
@@ -79,12 +94,11 @@ aslFile <-
   merge(aslFile, subjectID[,c("bare_id", "part_id", "rename_id")], all.x = T) %>%
   # In case we only want to save those subject IDs with both ASL and LangLoc
   # filter(!is.na(rename_id))  %>%
-  mutate(format_id = paste("blast", str_extract(part_id, "(?<=blast)\\S{1}"), str_extract(part_id, "(?<=blast(a|c))\\S+"), sep = "_")) %>%
-  filter(group == "adult" | (group == "child" & format_id %in% unique(tdID$ID))) %>%
+  filter(group == "adult" | (format_id %in% unique(tdID$ID)) | (format_id %in% unique(asdID$ID))) %>%
   dplyr::mutate(langloc_data_exist = ifelse(!is.na(rename_id), 1, ifelse(is.na(rename_id), 0, NA))) %>%
   dplyr::select(-one_of("rename_id"))
 
-write.csv(aslFile, "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/td_adult_asl_str_rand_fmri_data.csv", row.names = F)
+write.csv(aslFile, "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/td_asd_adult_asl_str_rand_fmri_data.csv", row.names = F)
 ```
 
 ```{r}
@@ -99,32 +113,41 @@ aslFile$rename_path <- paste0(output_path, aslFile$group, "/", aslFile$bare_id, 
 
 file.copy(as.character(aslFile$aslFile), aslFile$rename_path, overwrite = F)
 
-for (i in unique(aslFile$bare_id)) {
-  temp <- aslFile[which(aslFile$bare_id %in% i), "subj_cond"]
-  groupTemp <- unique(aslFile[which(aslFile$bare_id %in% i), "group"])
+for (i in unique(aslFile$part_id)) {
+  temp <- aslFile[which(aslFile$part_id %in% i), "subj_cond"]
+
+  bare_id <- unique(aslFile[which(aslFile$part_id %in% i), "bare_id"])
+  
+  groupTemp <- unique(aslFile[which(aslFile$part_id %in% i), "group"])
   
   my_output <- capture.output(write.table(temp, sep = " ", col.names = F, row.names = F, quote = F, eol = "\n"))
 
-  writeBin(paste(my_output, collapse = "\n"),  paste0(output_path, groupTemp, "/", i, "/", i, ".txt"))
+  writeBin(paste(my_output, collapse = "\n"),  paste0(output_path, groupTemp, "/", bare_id, "/", bare_id, ".txt"))
 }
 
 # Just to double check there is no non-TD children that got moved to the folders above
-wrongID <- paste0("blast_c_", list.files("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/asl_str_minus_rand/child/"))
+wrongID <- paste0("blast_c_", list.files("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/asl_str_minus_rand/child/"))
 
-wrongID[which(!wrongID %in% unique(tdID$ID))]
+wrongID[which(!wrongID %in% unique(append(tdID$ID, asdID$ID)))]
 ```
 
 
 
-# Move and Rename **ASL Structured/ Random Minus Rest** contrasts to individual folders and rename them for Subject-specific ASL/ LangLoc analyses
+# Move and Rename **ASL Structured/ Random Minus Rest** **subject-level** contrasts to individual folders and rename them for Subject-specific ASL/ LangLoc analyses
 ```{r}
 library(stringr)
 library(dplyr)
 
-output_path <- "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/asl_cond_minus_rest/"
+output_path <- "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/asl_cond_minus_rest/"
 
-subjectID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_combined.csv", stringsAsFactors = F)
+adultID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_adult.csv", stringsAsFactors = F)
+tdID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_child.csv")
+asdID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_asd.csv")
+
+subjectID <- dplyr::bind_rows(adultID, tdID, asdID)
+
 tdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - TD.csv")
+asdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - ASD.csv")
 
 aslFileUE <-
   list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/unedit_fmriprep/asl/subjectLevel", 
@@ -172,8 +195,9 @@ aslFile <-
   dplyr::select(-one_of("aslFileUE")) %>%
   mutate(basename = basename(aslFile)) %>%
   mutate(part_id = str_extract(basename, "sub-blast(a|c)[[:digit:]]+"),
-         bare_id = str_extract(basename, "(?<=sub-blast(a|c))[[:digit:]]+"),
-         group = ifelse(str_detect(basename, "blasta"), "adult", ifelse(str_detect(basename, "blastc"), "child", NA)),
+         bare_id = str_extract(basename, "(?<=sub-blast(a|c))[[:digit:]]+")) %>%
+  mutate(format_id = paste("blast", str_extract(part_id, "(?<=blast)\\S{1}"), str_extract(part_id, "(?<=blast(a|c))\\S+"), sep = "_")) %>%
+  mutate(group = ifelse(str_detect(basename, "blasta"), "adult", ifelse(format_id %in% unique(tdID$ID), "child", ifelse(format_id %in% unique(asdID$ID), "asd", NA))),
          stimuli = str_extract(basename, "(syllable|tone)"),
          condition = str_extract(basename, "(syllables|syllabler|tones|toner)")) %>%
   # Rename the stimuli and condition following previous pipleines
@@ -189,12 +213,11 @@ aslFile <-
   merge(aslFile, subjectID[,c("bare_id", "part_id", "rename_id")], all.x = T) %>%
   # In case we only want to save those subject IDs with both ASL and LangLoc
   # filter(!is.na(rename_id))  %>%
-  mutate(format_id = paste("blast", str_extract(part_id, "(?<=blast)\\S{1}"), str_extract(part_id, "(?<=blast(a|c))\\S+"), sep = "_")) %>%
-  filter(group == "adult" | (group == "child" & format_id %in% unique(tdID$ID))) %>%
+  filter(group == "adult" | (format_id %in% unique(tdID$ID)) | (format_id %in% unique(asdID$ID))) %>%
   dplyr::mutate(langloc_data_exist = ifelse(!is.na(rename_id), 1, ifelse(is.na(rename_id), 0, NA))) %>%
   dplyr::select(-one_of("rename_id"))
 
-write.csv(aslFile, "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/td_adult_asl_cond_rest_fmri_data.csv", row.names = F)
+write.csv(aslFile, "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/td_asd_adult_asl_cond_rest_fmri_data.csv", row.names = F)
 ```
 
 ```{r}
@@ -209,37 +232,165 @@ aslFile$rename_path <- paste0(output_path, aslFile$group, "/", aslFile$bare_id, 
 
 file.copy(as.character(aslFile$aslFile), aslFile$rename_path, overwrite = F)
 
-for (i in unique(aslFile$bare_id)) {
-  temp <- aslFile[which(aslFile$bare_id %in% i), "subj_cond"]
-  groupTemp <- unique(aslFile[which(aslFile$bare_id %in% i), "group"])
+for (i in unique(aslFile$part_id)) {
+  # if(!i %in% c("sub-blastc558", "sub-blastc560")) {
+    
+    temp <- aslFile[which(aslFile$part_id %in% i), "subj_cond"]
+    
+    bare_id <- unique(aslFile[which(aslFile$part_id %in% i), "bare_id"])
+    
+    groupTemp <- unique(aslFile[which(aslFile$part_id %in% i), "group"])
+    
+    my_output <- capture.output(write.table(temp, sep = " ", col.names = F, row.names = F, quote = F, eol = "\n"))
   
-  my_output <- capture.output(write.table(temp, sep = " ", col.names = F, row.names = F, quote = F, eol = "\n"))
-
-  writeBin(paste(my_output, collapse = "\n"),  paste0(output_path, groupTemp, "/", i, "/", i, ".txt"))
+    writeBin(paste(my_output, collapse = "\n"),  paste0(output_path, groupTemp, "/", bare_id, "/", bare_id, ".txt"))
+  # }
 }
 
 # Just to double check there is no non-TD children that got moved to the folders above
-wrongID <- paste0("blast_c_", list.files("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/asl_str_minus_rand/child/"))
+wrongID <- paste0("blast_c_", list.files("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/asl_str_minus_rand/child/"))
 
-wrongID[which(!wrongID %in% unique(tdID$ID))]
+wrongID[which(!wrongID %in% unique(append(tdID$ID, asdID$ID)))]
 ```
 
 
 
-# Move and Rename ASL All run-level contrasts to individual folders and rename them for Subject-specific ASL/ LangLoc analyses
+
+
+
+# Move and Rename **ASL Structured/ Random Minus Rest** **run-level** contrasts to individual folders and rename them for Subject-specific ASL/ LangLoc analyses
 ```{r}
-# slFile12 <- 
-#   slFile %>%
-#   filter(run == "1" | run == "2") %>%
-#   filter((stimuli == "Speech" & condition == "str") | (stimuli == "Tone" & condition == "rand"))
-# 
-# slFile34 <- 
-#   slFile %>%
-#   filter(run == "3" | run == "4") %>%
-#   filter((stimuli == "Speech" & condition == "rand") | (stimuli == "Tone" & condition == "str"))
-# 
-# slRest <- rbind(slFile12, slFile34)
+library(stringr)
+library(dplyr)
+
+output_path <- "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/asl_cond_minus_rest_run_level/"
+
+adultID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_adult.csv", stringsAsFactors = F)
+tdID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_child.csv")
+asdID <- read.csv("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/renamed_id_asd.csv")
+
+subjectID <- dplyr::bind_rows(adultID, tdID, asdID)
+
+tdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - TD.csv")
+asdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - ASD.csv")
+
+
+aslFileUE <-
+  list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/unedit_fmriprep/asl/runLevel", 
+           pattern = "sub-blast*", 
+           full.names = T, recursive = F)
+
+aslFileUE <-
+  list.files(aslFileUE,
+           pattern =  "sub-blast[[:alnum:]]+_task-asl_run-[[:alnum:]]+_contrast-[[:alnum:]]+minusrest_stat-z_statmap.nii.gz",
+           full.names = T, recursive = F)
+
+aslFileUE <- as.data.frame(aslFileUE)
+aslFileUE$aslFileUE <- as.character(aslFileUE$aslFileUE)
+
+aslFile <-
+  list.files("/Volumes/data/projects/blast/data/derivatives_new/first_level_output/edit_fmriprep/asl/runLevel", 
+           pattern = "sub-blast*", 
+           full.names = T, recursive = F)
+aslFile <-
+  list.files(aslFile,
+           pattern =  "sub-blast[[:alnum:]]+_task-asl_run-[[:alnum:]]+_contrast-[[:alnum:]]+minusrest_stat-z_statmap.nii.gz",
+           full.names = T, recursive = F)
+
+aslFile <- as.data.frame(aslFile)
+aslFile$aslFile <- as.character(aslFile$aslFile)
+
+# Save edited fMRI outputs and remove unedited fMRI outputs that are already in edited fMRI outputs
+aslFileUE <- 
+  aslFileUE %>%
+  filter(!basename(aslFileUE) %in% basename(aslFile$aslFile)) 
+
+aslFileUE <- 
+  aslFileUE %>%
+  mutate(source = str_extract(aslFileUE, "unedit_fmriprep"))
+
+aslFile <- 
+  aslFile %>%
+  mutate(source = str_extract(aslFile, "edit_fmriprep"))
+
+aslFile <- 
+  dplyr::bind_rows(aslFileUE, aslFile) %>%
+  mutate(aslFile = coalesce(aslFile, aslFileUE)) %>%
+  dplyr::select(-one_of("aslFileUE")) %>%
+  mutate(basename = basename(aslFile)) %>%
+  mutate(part_id = str_extract(basename, "sub-blast(a|c)[[:digit:]]+"),
+         bare_id = str_extract(basename, "(?<=sub-blast(a|c))[[:digit:]]+")) %>%
+  mutate(format_id = paste("blast", str_extract(part_id, "(?<=blast)\\S{1}"), str_extract(part_id, "(?<=blast(a|c))\\S+"), sep = "_")) %>%
+  mutate(group = ifelse(str_detect(basename, "blasta"), "adult", ifelse(format_id %in% unique(tdID$ID), "child", ifelse(format_id %in% unique(asdID$ID), "asd", NA))),
+         stimuli = str_extract(basename, "(syllable|tone)"),
+         run = str_extract(basename, "(?<=run-0)[[:digit:]]{1}"),
+         condition = str_extract(basename, "(syllables|syllabler|tones|toner)")) %>%
+  # Rename the stimuli and condition following previous pipleines
+  mutate(stimuli = ifelse(stimuli == "syllable", "speech", ifelse(stimuli == "tone", "tone", NA)),
+         condition = ifelse(condition %in% c("syllables", "tones"), "str", ifelse(condition %in% c("syllabler", "toner"), "rand", NA))) %>%
+  mutate(subj_cond = paste0(bare_id, "_", "run_", run, "_", stimuli, "_", condition))
+
+subjectID <-
+  subjectID %>%
+  mutate(bare_id = str_pad(bare_id, 3, side = "left", pad = "0"))
+
+
+aslFile <- 
+  merge(aslFile, subjectID[,c("bare_id", "part_id", "rename_id")], all.x = T) %>%
+  # In case we only want to save those subject IDs with both ASL and LangLoc
+  # filter(!is.na(rename_id))  %>%
+  filter(group == "adult" | (format_id %in% unique(tdID$ID)) | (format_id %in% unique(asdID$ID))) %>%
+  dplyr::mutate(langloc_data_exist = ifelse(!is.na(rename_id), 1, ifelse(is.na(rename_id), 0, NA))) %>%
+  dplyr::select(-one_of("rename_id"))
+
+
+write.csv(aslFile, "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/asl_cond_minus_rest_run_level/td_asd_adult_asl_str_rand_run_level_fmri_data.csv", row.names = F)
 ```
+
+```{r}
+subdir <- paste0(output_path, aslFile$group, "/", aslFile$bare_id)
+subdir <- unique(subdir)
+
+for (i in 1:length(subdir)) {
+  dir.create(subdir[i])
+}
+
+aslFile$rename_path <- paste0(output_path, aslFile$group, "/", aslFile$bare_id, "/", aslFile$subj_cond, ".nii.gz")
+
+file.copy(as.character(aslFile$aslFile), aslFile$rename_path, overwrite = F)
+
+for (i in unique(aslFile$part_id)) {
+  # if(!i %in% c("sub-blastc558", "sub-blastc560")) {
+    temp <- aslFile[which(aslFile$part_id %in% i), "subj_cond"]
+  
+    bare_id <- unique(aslFile[which(aslFile$part_id %in% i), "bare_id"])
+    
+    groupTemp <- unique(aslFile[which(aslFile$part_id %in% i), "group"])
+    
+    my_output <- capture.output(write.table(temp, sep = " ", col.names = F, row.names = F, quote = F, eol = "\n"))
+  
+    writeBin(paste(my_output, collapse = "\n"),  paste0(output_path, groupTemp, "/", bare_id, "/", bare_id, ".txt"))
+  # }
+}
+
+# Just to double check there is no non-TD children that got moved to the folders above
+wrongID <- paste0("blast_c_", list.files("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/asl_str_minus_rand/child/"))
+
+wrongID[which(!wrongID %in% unique(append(tdID$ID, asdID$ID)))]
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -249,7 +400,7 @@ wrongID[which(!wrongID %in% unique(tdID$ID))]
 library(stringr)
 library(dplyr)
 
-output_path <- "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/langloc_mvpa/"
+output_path <- "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/langloc_mvpa/"
 
 tdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - TD.csv")
 
@@ -327,7 +478,7 @@ file.copy(as.character(aliceFile$aliceFile), aliceFile$rename_path, overwrite = 
 
 ## Langloc intact minus rest/fix
 ```{r}
-output_path <- "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/langloc_mvpa/"
+output_path <- "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/langloc_mvpa/"
 
 tdID <- read.csv("/Users/jojohu/Downloads/Blast_mri_cumulative_data.xlsx - TD.csv")
 
@@ -405,7 +556,38 @@ file.copy(as.character(aliceFile$aliceFile), aliceFile$rename_path, overwrite = 
 ```
 
 
-# **TO DO**: Update these to reflect the most up to date nilearn pipeline:
+
+## Copy the ASL first-level outputs and Langloc first-level outputs to the group-constrained mask folder too for running second-level analysis using group-constrained mask
+## Super slow through script, better do it manually (see paths below; thus eval = F; this chunk is needed) 
+```{r, eval = F}
+file.copy("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/",
+          "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/langloc_mvpa", overwrite = T, recursive = T)
+
+file.copy( "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/",
+           "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/asl_str_minus_rand", overwrite = T, recursive = T)
+
+file.copy( "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/",
+           "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/asl_cond_minus_rest_run_level", overwrite = T, recursive = T)
+
+file.copy("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/",
+          "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/asl_cond_minus_rest", overwrite = T, recursive = T)
+
+file.copy("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/",
+          "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/td_adult_asl_cond_rest_fmri_data.csv", overwrite = T, recursive = F)
+
+file.copy("/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/group_constrained_mask/indiv_langloc_parcels/",
+          "/Volumes/data/projects/blast/data/mri/imaging/scott_gcss_lpsa/data/nilearn_pipeline/fedorenko_mask/indiv_langloc_parcels/td_adult_asl_str_rand_fmri_data.csv", overwrite = T, recursive = F)
+
+# Empty all the results folder
+```
+
+
+
+
+
+
+
+# **TO DO**: Update these to reflect the most up to date nilearn pipeline and make sure not to filter runs the ways used below (It is WRONG for counter-balanced subjects)
 # Dorsal Attention Network Cleaning
 # Clean and Move ASL Random vs. Rest output for adults for extracting minimal of top 10% activation for each individual
 ```{r}
